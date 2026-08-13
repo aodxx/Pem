@@ -5,8 +5,13 @@ const $ = selector => document.querySelector(selector);
 const $$ = selector => Array.from(document.querySelectorAll(selector));
 const state = {
   accessToken: localStorage.getItem('palmAccessToken') || '', originalDataUrl: '', previewDataUrl: '', rotation: 0,
-  source: 'MANUAL', receipt: null, ocrRunId: '', model: '', editingSaleId: '', expectedUpdatedAt: '', installPrompt: null
+  source: 'MANUAL', receipt: null, ocrRunId: '', model: '', editingSaleId: '', expectedUpdatedAt: '', installPrompt: null,
+  syncInProgress: false
 };
+
+const QUEUE_DB = 'palm-ledger-offline-v1';
+const QUEUE_STORE = 'pending-saves';
+let queueDbPromise;
 
 document.addEventListener('DOMContentLoaded', init);
 
@@ -17,7 +22,8 @@ function init() {
   bindNavigation(); bindCapture(); bindForm(); bindSettings(); bindFilters(); setupInstall();
   populateYears(); updateConnectionUI(); restoreDraft();
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js').catch(() => {});
-  window.addEventListener('online', () => setSyncStatus('ออนไลน์'));
+  initSaveQueue().then(async () => { await refreshQueueUI(); processPendingSaves(false); }).catch(() => {});
+  window.addEventListener('online', () => { setSyncStatus('ออนไลน์ — กำลังตรวจรายการรอส่ง'); processPendingSaves(false); });
   window.addEventListener('offline', () => setSyncStatus('ออฟไลน์ — แบบร่างยังอยู่'));
 }
 
@@ -53,6 +59,7 @@ function bindForm() {
 
 function bindSettings() {
   $('#save-settings').addEventListener('click', saveSettings);
+  $('#retry-pending').addEventListener('click', () => processPendingSaves(true));
 }
 
 function bindFilters() {
@@ -87,7 +94,7 @@ async function renderImage(dataUrl, rotation) {
   const swap = rotation === 90 || rotation === 270;
   const sourceWidth = swap ? image.height : image.width;
   const sourceHeight = swap ? image.width : image.height;
-  const scale = Math.min(1, 1800 / Math.max(sourceWidth, sourceHeight));
+  const scale = Math.min(1, 1600 / Math.max(sourceWidth, sourceHeight));
   const width = Math.max(1, Math.round(sourceWidth * scale));
   const height = Math.max(1, Math.round(sourceHeight * scale));
   const canvas = document.createElement('canvas'); canvas.width = width; canvas.height = height;
@@ -95,7 +102,7 @@ async function renderImage(dataUrl, rotation) {
   context.translate(width / 2, height / 2); context.rotate(rotation * Math.PI / 180);
   const drawWidth = image.width * scale; const drawHeight = image.height * scale;
   context.drawImage(image, -drawWidth / 2, -drawHeight / 2, drawWidth, drawHeight);
-  return canvas.toDataURL('image/jpeg', .86);
+  return canvas.toDataURL('image/jpeg', .8);
 }
 
 async function analyzeImage() {
@@ -104,7 +111,7 @@ async function analyzeImage() {
   setLoading(true, 'Gemini กำลังอ่านใบชั่ง…');
   try {
     const image = await imagePayload(state.previewDataUrl);
-    const data = await api('sales.analyze', { image, source: state.source, schemaVersion: '1.0.0' });
+    const data = await api('sales.analyze', { image, source: state.source, schemaVersion: '1.0.0' }, true, { timeoutMs: 90000 });
     state.receipt = data.receipt; state.ocrRunId = data.ocrRunId; state.model = data.model;
     openReview(data.receipt, data.lowConfidenceFields || [], data.validation, false);
     if (data.duplicateCandidates && data.duplicateCandidates.length) showValidation({ warnings: [{ message: 'พบรายการเดิมที่คล้ายกัน โปรดตรวจสอบก่อนบันทึก' }] });
@@ -181,26 +188,46 @@ async function saveSale(event, duplicateOverride = false) {
   event?.preventDefault();
   if (!ensureConnected()) return;
   const sale = collectReceipt();
-  setLoading(true, state.editingSaleId ? 'กำลังบันทึกการแก้ไข…' : 'กำลังบันทึกลง Google Sheets…');
+  if (state.editingSaleId) {
+    setLoading(true, 'กำลังบันทึกการแก้ไข…');
+    try {
+      const data = await api('sales.update', { saleId: state.editingSaleId, expectedUpdatedAt: state.expectedUpdatedAt, sale }, true, { timeoutMs: 45000 });
+      localStorage.removeItem('palmDraft'); resetCapture();
+      toast(data.updated ? 'แก้ไขข้อมูลเรียบร้อยแล้ว' : 'บันทึกเรียบร้อยแล้ว');
+      await showView('history');
+    } catch (error) { handleError(error); }
+    finally { setLoading(false); }
+    return;
+  }
+
+  const saveButton = $('#save-button');
+  saveButton.disabled = true;
+  saveButton.textContent = 'กำลังเก็บไว้ในเครื่อง…';
   try {
-    let data;
-    if (state.editingSaleId) {
-      data = await api('sales.update', { saleId: state.editingSaleId, expectedUpdatedAt: state.expectedUpdatedAt, sale });
-    } else {
-      const image = state.previewDataUrl ? await imagePayload(state.previewDataUrl) : null;
-      data = await api('sales.create', { sale, image, source: state.source, ocrRunId: state.ocrRunId, model: state.model,
-        idempotencyKey: getIdempotencyKey(), duplicateOverride });
-    }
-    localStorage.removeItem('palmDraft'); localStorage.removeItem('palmIdempotencyKey'); resetCapture();
-    toast(data.updated ? 'แก้ไขข้อมูลเรียบร้อยแล้ว' : 'บันทึกใบชั่งเรียบร้อยแล้ว');
-    await showView('history');
+    const image = state.previewDataUrl ? await imagePayload(state.previewDataUrl) : null;
+    const idempotencyKey = getIdempotencyKey();
+    await queuePut({
+      id: idempotencyKey,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      attempts: 0,
+      status: 'pending',
+      lastError: '',
+      payload: { sale, image, source: state.source, ocrRunId: state.ocrRunId, model: state.model,
+        idempotencyKey, duplicateOverride }
+    });
+    localStorage.removeItem('palmDraft');
+    localStorage.removeItem('palmIdempotencyKey');
+    resetCapture();
+    await refreshQueueUI();
+    toast('รับข้อมูลแล้ว — ปิดหน้าได้ ระบบจะส่งให้อัตโนมัติ');
+    processPendingSaves(true);
   } catch (error) {
-    if (error.code === 'DUPLICATE_SUSPECTED' && !duplicateOverride) {
-      setLoading(false);
-      if (confirm('พบข้อมูลที่คล้ายกับใบชั่งเดิม\n\nต้องการบันทึกต่อหรือไม่?')) return saveSale(null, true);
-    }
-    handleError(error);
-  } finally { setLoading(false); }
+    handleError(appError('LOCAL_SAVE_FAILED', 'เก็บรายการไว้ในเครื่องไม่สำเร็จ กรุณาอย่าเพิ่งปิดหน้านี้', { message: error.message }));
+  } finally {
+    saveButton.disabled = false;
+    saveButton.textContent = 'ยืนยันและบันทึก';
+  }
 }
 
 function resetCapture() {
@@ -243,14 +270,17 @@ async function loadHistory() {
     if (monthValue) { filters.year = monthValue.slice(0, 4); filters.month = monthValue.slice(5, 7); }
     const items = await api('sales.list', filters);
     const filtered = items.filter(item => !query || `${item.ReceiptNumber || ''} ${item.BuyerNameRaw || ''}`.toLowerCase().includes(query.toLowerCase()));
-    renderHistory(filtered);
+    const pending = await queueGetAll().catch(() => []);
+    renderHistory(filtered, pending);
   } catch (error) { handleError(error); } finally { setLoading(false); }
 }
 
-function renderHistory(items) {
-  const container = $('#history-list'); container.classList.toggle('empty', !items.length);
-  if (!items.length) { container.textContent = 'ยังไม่มีข้อมูลการขาย'; return; }
-  container.innerHTML = items.map(item => `<article class="history-card" data-sale-id="${escapeHtml(item.SaleID)}"><div><h3>${escapeHtml(formatThaiDate(item.SaleDate))}</h3><p>${escapeHtml(item.BuyerNameRaw || 'ไม่ระบุลาน')} • ${formatNumber(item.NetWeightKg, 0)} กก.</p><p>ใบชั่ง ${escapeHtml(item.ReceiptNumber || '—')} • ${formatNumber(item.PricePerKg, 2)} บาท/กก.</p></div><div class="amount"><strong>${formatMoney(item.NetAmount)}</strong><small>แตะเพื่อดู/แก้ไข</small></div></article>`).join('');
+function renderHistory(items, pending = []) {
+  const container = $('#history-list'); container.classList.toggle('empty', !items.length && !pending.length);
+  if (!items.length && !pending.length) { container.textContent = 'ยังไม่มีข้อมูลการขาย'; return; }
+  const pendingHtml = pending.map(job => { const sale = job.payload?.sale || {}; return `<article class="history-card pending"><div><h3>${escapeHtml(formatThaiDate(sale.saleDate))}</h3><p>${escapeHtml(sale.buyerName || 'ไม่ระบุลาน')} • ${formatNumber(sale.netWeightKg, 0)} กก.</p><p>ใบชั่ง ${escapeHtml(sale.receiptNumber || '—')}</p></div><div class="amount"><strong>เก็บไว้แล้ว</strong><small>${job.status === 'blocked' ? 'รอยืนยันรายการซ้ำ' : 'กำลังส่งอัตโนมัติ'}</small></div></article>`; }).join('');
+  const savedHtml = items.map(item => `<article class="history-card" data-sale-id="${escapeHtml(item.SaleID)}"><div><h3>${escapeHtml(formatThaiDate(item.SaleDate))}</h3><p>${escapeHtml(item.BuyerNameRaw || 'ไม่ระบุลาน')} • ${formatNumber(item.NetWeightKg, 0)} กก.</p><p>ใบชั่ง ${escapeHtml(item.ReceiptNumber || '—')} • ${formatNumber(item.PricePerKg, 2)} บาท/กก.</p></div><div class="amount"><strong>${formatMoney(item.NetAmount)}</strong><small>แตะเพื่อดู/แก้ไข</small></div></article>`).join('');
+  container.innerHTML = pendingHtml + savedHtml;
   $$('.history-card').forEach(card => card.addEventListener('click', () => editSale(card.dataset.saleId)));
 }
 
@@ -279,24 +309,161 @@ async function saveSettings() {
   state.accessToken = token; localStorage.setItem('palmAccessToken', token); updateConnectionUI();
   setLoading(true, 'กำลังทดสอบการเชื่อมต่อ…');
   try {
-    const health = await api('health', {}, false); await api('dashboard.summary', { year: new Date().getFullYear() });
+    const health = await api('health', {}, false, { timeoutMs: 20000 });
+    await api('settings.get', {}, true, { timeoutMs: 20000 });
     const box = $('#connection-result'); box.className = 'notice success'; box.textContent = `เชื่อมต่อสำเร็จ — Backend ${health.version}`;
     toast('เชื่อมต่อระบบเรียบร้อยแล้ว');
+    processPendingSaves(false);
   } catch (error) {
     const box = $('#connection-result'); box.className = 'notice error'; box.textContent = error.message; handleError(error);
   } finally { setLoading(false); }
 }
 
-async function api(action, payload = {}, includeToken = true) {
+async function api(action, payload = {}, includeToken = true, options = {}) {
   const body = { ...payload, action, requestId: crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}` };
   if (includeToken && action !== 'health') body.accessToken = state.accessToken;
+  const controller = new AbortController();
+  const timeoutMs = Number(options.timeoutMs || (action === 'sales.analyze' ? 90000 : 45000));
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
   let response;
-  try { response = await fetch(CONFIG.apiUrl, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(body), redirect: 'follow' }); }
-  catch (error) { throw appError('NETWORK_ERROR', navigator.onLine ? 'เชื่อมต่อ Backend ไม่สำเร็จ กรุณาตรวจ Deployment' : 'ขณะนี้ออฟไลน์ กรุณาเชื่อมต่ออินเทอร์เน็ต'); }
-  const text = await response.text(); let envelope;
-  try { envelope = JSON.parse(text); } catch (error) { throw appError('INVALID_RESPONSE', 'Backend ส่งผลลัพธ์ที่อ่านไม่ได้'); }
-  if (!envelope.ok) throw appError(envelope.error?.code || 'API_ERROR', envelope.error?.message || 'ระบบเกิดข้อผิดพลาด', envelope.error?.details);
-  return envelope.data;
+  try {
+    response = await fetch(CONFIG.apiUrl, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(body), redirect: 'follow', signal: controller.signal });
+    const text = await response.text(); let envelope;
+    try { envelope = JSON.parse(text); } catch (error) { throw appError('INVALID_RESPONSE', 'Backend ส่งผลลัพธ์ที่อ่านไม่ได้'); }
+    if (!envelope.ok) throw appError(envelope.error?.code || 'API_ERROR', envelope.error?.message || 'ระบบเกิดข้อผิดพลาด', envelope.error?.details);
+    return envelope.data;
+  } catch (error) {
+    if (error.code) throw error;
+    if (error.name === 'AbortError') throw appError('REQUEST_TIMEOUT', 'ระบบตอบกลับช้า รายการยังเก็บอยู่ในเครื่องและจะตรวจสอบให้อัตโนมัติ');
+    throw appError('NETWORK_ERROR', navigator.onLine ? 'เชื่อมต่อ Backend ไม่สำเร็จ รายการยังเก็บอยู่ในเครื่อง' : 'ขณะนี้ออฟไลน์ รายการยังเก็บอยู่ในเครื่อง');
+  } finally { clearTimeout(timeout); }
+}
+
+function initSaveQueue() {
+  if (queueDbPromise) return queueDbPromise;
+  queueDbPromise = new Promise((resolve, reject) => {
+    if (!window.indexedDB) return reject(new Error('อุปกรณ์นี้ไม่รองรับพื้นที่เก็บคิว'));
+    const request = indexedDB.open(QUEUE_DB, 1);
+    request.onupgradeneeded = () => {
+      const db = request.result;
+      if (!db.objectStoreNames.contains(QUEUE_STORE)) db.createObjectStore(QUEUE_STORE, { keyPath: 'id' });
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error || new Error('เปิดคิวบันทึกไม่สำเร็จ'));
+  });
+  return queueDbPromise;
+}
+
+async function queuePut(job) {
+  const db = await initSaveQueue();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(QUEUE_STORE, 'readwrite');
+    transaction.objectStore(QUEUE_STORE).put(job);
+    transaction.oncomplete = () => resolve(job);
+    transaction.onerror = () => reject(transaction.error || new Error('เก็บคิวไม่สำเร็จ'));
+  });
+}
+
+async function queueDelete(id) {
+  const db = await initSaveQueue();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(QUEUE_STORE, 'readwrite');
+    transaction.objectStore(QUEUE_STORE).delete(id);
+    transaction.oncomplete = () => resolve();
+    transaction.onerror = () => reject(transaction.error || new Error('ลบคิวไม่สำเร็จ'));
+  });
+}
+
+async function queueGetAll() {
+  const db = await initSaveQueue();
+  return new Promise((resolve, reject) => {
+    const request = db.transaction(QUEUE_STORE, 'readonly').objectStore(QUEUE_STORE).getAll();
+    request.onsuccess = () => resolve(request.result || []);
+    request.onerror = () => reject(request.error || new Error('อ่านคิวไม่สำเร็จ'));
+  });
+}
+
+async function refreshQueueUI() {
+  const jobs = await queueGetAll().catch(() => []);
+  const banner = $('#pending-banner');
+  banner.classList.toggle('hidden', jobs.length === 0);
+  $('#retry-pending').disabled = state.syncInProgress;
+  if (!jobs.length) {
+    if (state.accessToken) setSyncStatus(navigator.onLine ? 'เชื่อมต่อแล้ว — บันทึกครบ' : 'ออฟไลน์ — ไม่มีรายการค้าง');
+    return jobs;
+  }
+  const blocked = jobs.filter(job => job.status === 'blocked' || job.status === 'error').length;
+  $('#pending-title').textContent = state.syncInProgress ? `กำลังส่ง ${jobs.length} รายการ` : `เก็บไว้ในเครื่องแล้ว ${jobs.length} รายการ`;
+  $('#pending-message').textContent = blocked ? `${blocked} รายการต้องกด “ส่งอีกครั้ง” เพื่อตรวจสอบ` : (navigator.onLine ? 'ระบบจะส่งขึ้น Google Sheets อัตโนมัติ' : 'จะส่งอัตโนมัติเมื่ออินเทอร์เน็ตกลับมา');
+  setSyncStatus(state.syncInProgress ? `กำลังส่ง ${jobs.length} รายการ…` : `รอส่ง ${jobs.length} รายการ`);
+  return jobs;
+}
+
+async function verifyQueuedSave(job) {
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    await delay(1500 + attempt * 1000);
+    try {
+      const status = await api('sales.status', { idempotencyKey: job.id }, true, { timeoutMs: 15000 });
+      if (status.saved) return true;
+    } catch (error) {
+      if (error.code === 'UNAUTHORIZED') throw error;
+    }
+  }
+  return false;
+}
+
+async function processPendingSaves(interactive = false) {
+  if (state.syncInProgress || !state.accessToken || !navigator.onLine) { await refreshQueueUI(); return; }
+  state.syncInProgress = true;
+  await refreshQueueUI();
+  let savedCount = 0;
+  try {
+    const jobs = (await queueGetAll()).sort((a, b) => a.createdAt - b.createdAt);
+    for (const job of jobs) {
+      if ((job.status === 'blocked' || job.status === 'error') && !interactive) continue;
+      if (job.status === 'blocked') {
+        const approved = confirm('รายการนี้คล้ายกับใบชั่งเดิม\n\nหากตรวจแล้วว่าเป็นคนละรายการ ให้กด OK เพื่อบันทึกต่อ');
+        if (!approved) continue;
+        job.payload.duplicateOverride = true;
+      }
+      let sending = true;
+      while (sending) {
+        job.status = 'sending'; job.attempts = Number(job.attempts || 0) + 1; job.updatedAt = Date.now();
+        await queuePut(job); await refreshQueueUI();
+        try {
+          await api('sales.create', job.payload, true, { timeoutMs: 50000 });
+          await queueDelete(job.id); savedCount += 1; sending = false;
+        } catch (error) {
+          if (error.code === 'DUPLICATE_SUSPECTED') {
+            if (interactive && confirm('พบข้อมูลคล้ายกับใบชั่งเดิม\n\nยืนยันว่าเป็นรายการใหม่และบันทึกต่อหรือไม่?')) {
+              job.payload.duplicateOverride = true;
+              continue;
+            }
+            job.status = 'blocked'; job.lastError = error.message; job.updatedAt = Date.now();
+            await queuePut(job); sending = false; continue;
+          }
+          if (['NETWORK_ERROR', 'REQUEST_TIMEOUT', 'INVALID_RESPONSE', 'RATE_LIMITED'].includes(error.code)) {
+            const saved = await verifyQueuedSave(job);
+            if (saved) { await queueDelete(job.id); savedCount += 1; }
+            else {
+              job.status = 'pending'; job.lastError = error.message; job.updatedAt = Date.now();
+              await queuePut(job);
+            }
+            sending = false; continue;
+          }
+          job.status = error.code === 'UNAUTHORIZED' ? 'pending' : 'error';
+          job.lastError = error.message; job.updatedAt = Date.now();
+          await queuePut(job); sending = false;
+          if (error.code === 'UNAUTHORIZED') { handleError(error); return; }
+        }
+      }
+    }
+  } finally {
+    state.syncInProgress = false;
+    const remaining = await refreshQueueUI();
+    if (savedCount) toast(`ส่งเข้า Google Sheets สำเร็จ ${savedCount} รายการ`);
+    if (!remaining.length && $('#view-history').classList.contains('active')) loadHistory();
+  }
 }
 
 function ensureConnected(showMessage = true) {
@@ -329,3 +496,4 @@ function saveDraft(){if(!$('#review-panel').classList.contains('hidden'))localSt
 function restoreDraft(){try{const draft=JSON.parse(localStorage.getItem('palmDraft'));if(draft?.receipt){state.source=draft.source||'MANUAL';state.ocrRunId=draft.ocrRunId||'';state.model=draft.model||'';openReview(draft.receipt,[],{warnings:[{message:'กู้คืนแบบร่างที่ยังไม่ได้บันทึก'}]},false);}}catch(error){localStorage.removeItem('palmDraft');}}
 function populateYears(){const current=new Date().getFullYear();$('#dashboard-year').innerHTML=Array.from({length:6},(_,i)=>`<option value="${current-i}">${current-i+543}</option>`).join('');}
 function setupInstall(){window.addEventListener('beforeinstallprompt',event=>{event.preventDefault();state.installPrompt=event;$('#install-button').classList.remove('hidden');});$('#install-button').addEventListener('click',async()=>{if(!state.installPrompt)return;state.installPrompt.prompt();await state.installPrompt.userChoice;state.installPrompt=null;$('#install-button').classList.add('hidden');});}
+function delay(ms){return new Promise(resolve=>setTimeout(resolve,ms));}

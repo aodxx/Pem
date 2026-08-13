@@ -9,7 +9,7 @@ new vm.Script(backend, { filename: 'Code.gs' });
 const requiredFunctions = [
   'doGet','doPost','setupV1','runV1SmokeTests','testGeminiReceiptFromDrive',
   'analyzeReceipt_','createSale_','updateSale_','voidSale_','listSales_',
-  'getSale_','getDashboardSummary_','findDuplicateCandidates_','requireAccessToken_'
+  'getSale_','getSaleSaveStatus_','getDashboardSummary_','findDuplicateCandidates_','requireAccessToken_'
 ];
 for (const name of requiredFunctions) {
   if (!new RegExp(`function\\s+${name.replace(/[.*+?^${}()|[\\]\\]/g, '\\$&')}\\s*\\(`).test(backend)) {
@@ -25,6 +25,9 @@ for (const scope of ['spreadsheets','drive','script.external_request']) {
 
 const html = fs.readFileSync('frontend/index.html', 'utf8');
 const app = fs.readFileSync('frontend/app.js', 'utf8');
+for (const reliabilityMarker of ['indexedDB.open', 'processPendingSaves', "api('sales.status'", 'idempotencyKey']) {
+  if (!app.includes(reliabilityMarker)) throw new Error(`Missing reliable-save marker: ${reliabilityMarker}`);
+}
 const ids = [...app.matchAll(/\$\(['"]#([a-zA-Z0-9_-]+)['"]\)/g)].map(match => match[1]);
 for (const id of new Set(ids)) {
   if (!html.includes(`id="${id}"`)) throw new Error(`Frontend references missing element: #${id}`);
