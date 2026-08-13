@@ -1,80 +1,67 @@
 # PROGRESS
 
-อัปเดตล่าสุด: 2026-08-12  
+อัปเดตล่าสุด: 2026-08-13  
 Repository: https://github.com/aodxx/Pem  
-Current branch: `agent/phase-0-discovery-architecture`  
-Draft PR: https://github.com/aodxx/Pem/pull/1
+Phase 0 Draft PR: https://github.com/aodxx/Pem/pull/1  
+Current branch: `agent/phase-1-apps-script-foundation`
 
 ## Phase ปัจจุบัน
 
 - Phase 0 — Discovery & Architecture: **Completed**
-- Phase 1 — Google Workspace Foundation: **In progress**
+- Phase 1 — Google Workspace & Apps Script Foundation: **Backend source completed / deployment pending**
 
 ## เสร็จแล้ว
 
 ### Phase 0
 
-- อ่าน PRD จาก Google Drive
-- ตรวจสอบภาพใบชั่งตัวอย่าง 2 ภาพ
-- ระบุ field และ validation จากใบชั่งจริง
-- เลือกสถาปัตยกรรม GitHub Pages + Apps Script + Sheets + Drive + Gemini
-- เลือก Gemini รุ่น Stable `gemini-3.6-flash` และทำให้เปลี่ยนผ่าน Settings ได้
-- ออกแบบ Google Sheets schema
-- ออกแบบ Gemini Structured Output schema
-- ออกแบบ API contract
-- ออกแบบ duplicate detection, audit trail และ idempotency
-- กำหนด security แบบ pairing/session โดยไม่ใส่ API Key ใน Frontend
-- สร้าง Repository, development branch และ Draft PR #1
+- อ่าน PRD และตรวจภาพใบชั่ง 2 ภาพ
+- ออกแบบ Architecture, Google Sheets schema, Gemini schema และ API contract
+- สร้าง Draft PR #1
 
-### Phase 1
+### Phase 1 — Google Sheets
 
-- สร้าง Native Google Spreadsheet: https://docs.google.com/spreadsheets/d/1S5WtdhsVUOQ5APZ_EiBKSZBTeyi6VKnVLeaGbWPBAPc/edit
-- ย้าย Spreadsheet เข้าโฟลเดอร์โปรเจกต์ใน Google Drive
-- สร้างแท็บ Sales, Deductions, Buyers, OCRRuns, AuditTrail, Logs และ Settings
-- ตรวจ header ของทุกแท็บด้วย Google Sheets API
-- กำหนด Settings เริ่มต้น รวม `TIMEZONE=Asia/Bangkok` และ `GEMINI_MODEL=gemini-3.6-flash`
-- แก้ Spreadsheet timezone จากค่า import เป็น `Asia/Bangkok`
-- Freeze row 1 และเปิด Filter ในทุกแท็บ
-- ตรวจ visual layout ของ workbook ต้นทางและตรวจว่าไม่มี formula error
+- สร้าง Native Google Spreadsheet พร้อม 7 แท็บ
+- ตั้ง Timezone `Asia/Bangkok`
+- ตรวจ Headers, Settings, Filters และ Freeze panes
+- ย้าย Spreadsheet เข้าโฟลเดอร์โปรเจกต์
 
-## กำลังทำ
+### Phase 1 — Apps Script source
 
-- เตรียม Apps Script backend bootstrap
-- เตรียม setup/config/health endpoint
-- เตรียม Drive receipt folder structure
+- ได้ Apps Script Project ID จากผู้ใช้
+- สร้าง manifest พร้อม OAuth scopes
+- สร้าง Config, Database, Drive, Log, Health, Router และ Response layers
+- สร้าง `setupProject()` และ `verifyProjectSetup()`
+- สร้าง `runPhase1Tests()` จำนวน 7 integration tests
+- สร้าง `doGet()` และ `doPost()`
+- รองรับ API actions: `health`, `settings.get`, `setup.verify`
+- ตรวจ syntax ของไฟล์ `.gs` ทั้ง 12 ไฟล์ผ่าน
+- ตรวจ manifest ผ่าน
 
-## Bug / Risk
+## Pending
 
-- ไม่มี Bug ใน Spreadsheet foundation
-- Risk ที่ต้องทดสอบจริง: CORS/redirect ระหว่าง GitHub Pages และ Apps Script
-- Risk ที่ต้องทดสอบจริง: payload ภาพมือถือและ Apps Script quota
-- Risk ที่ต้องทดสอบจริง: Gemini endpoint และ quota ของบัญชีผู้ใช้
+- นำ source เข้า Apps Script Project จริง
+- Run `setupProject()` และ Authorize
+- Run `runPhase1Tests()`
+- Deploy Web App
+- ทดสอบ `?action=health` จาก URL จริง
 
-## Pending ที่ต้องให้ผู้ใช้ทำเอง
+## Blocker ปัจจุบัน
 
-ยังไม่ต้องดำเนินการใด ๆ ในขั้นตอนนี้
-
-เมื่อ Backend พร้อมจะต้อง:
-
-1. เปิดหรือยืนยัน Gemini API
-2. ใส่ Gemini API Key ใน Apps Script Properties ตามขั้นตอนที่ระบบจะแจ้ง
-3. Authorize Apps Script สำหรับ Sheets, Drive และ UrlFetch
-4. Deploy Apps Script Web App
-5. เปิด GitHub Pages เมื่อ Frontend พร้อม
+Cloud Browser ยังไม่ได้ลงชื่อเข้าใช้ Google จึงยังเข้า Apps Script Editor ของผู้ใช้ไม่ได้ การใส่ source และ Run ต้องรอผู้ใช้ลงชื่อเข้าใช้ใน Cloud Browser หรือดำเนินการใน Editor ตามขั้นตอน
 
 ## Deployment / Resources
 
+- Apps Script Project: https://script.google.com/u/0/home/projects/1PzG5lE7bxpSMSyO_BOBx9DGuFTZMTw_7mBV7o12c6HoWMKqzLlmwaGaz/edit
+- Apps Script Project ID: `1PzG5lE7bxpSMSyO_BOBx9DGuFTZMTw_7mBV7o12c6HoWMKqzLlmwaGaz`
 - Google Spreadsheet: https://docs.google.com/spreadsheets/d/1S5WtdhsVUOQ5APZ_EiBKSZBTeyi6VKnVLeaGbWPBAPc/edit
-- Spreadsheet ID: `1S5WtdhsVUOQ5APZ_EiBKSZBTeyi6VKnVLeaGbWPBAPc`
 - Google Drive project folder: https://drive.google.com/drive/folders/1AnRqXRhfecY1-qqM3iQlV1YtR945cDoN
 - GitHub Pages URL: ยังไม่มี
 - Apps Script Deployment URL: ยังไม่มี
-- Drive receipts folder: ยังไม่มี
 
 ## Versions
 
-- System: 0.1.0-foundation
-- API: v1 draft
+- System: 0.2.0-foundation
+- API: v1
 - Gemini schema: 1.0.0
-- Apps Script version: ยังไม่มี
-- Last tested: Google Sheets metadata, headers, Settings, timezone, filters และ freeze panes — 2026-08-12
+- Apps Script source: 0.2.0
+- Last tested: local syntax/static checks and manifest validation — 2026-08-13
