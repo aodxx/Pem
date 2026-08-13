@@ -1,0 +1,50 @@
+import fs from 'node:fs';
+import vm from 'node:vm';
+
+const backend = fs.readFileSync('Palm-Yield-Ledger-Code.gs', 'utf8');
+new vm.Script(backend, { filename: 'Code.gs' });
+
+const requiredFunctions = [
+  'doGet','doPost','setupV1','runV1SmokeTests','testGeminiReceiptFromDrive',
+  'analyzeReceipt_','createSale_','updateSale_','voidSale_','listSales_',
+  'getSale_','getDashboardSummary_','findDuplicateCandidates_','requireAccessToken_'
+];
+for (const name of requiredFunctions) {
+  if (!new RegExp(`function\\s+${name.replace(/[.*+?^${}()|[\\]\\]/g, '\\$&')}\\s*\\(`).test(backend)) {
+    throw new Error(`Missing backend function: ${name}`);
+  }
+}
+
+const manifest = JSON.parse(fs.readFileSync('appsscript.json', 'utf8'));
+if (manifest.timeZone !== 'Asia/Bangkok' || manifest.runtimeVersion !== 'V8') throw new Error('Invalid Apps Script manifest');
+for (const scope of ['spreadsheets','drive','script.external_request']) {
+  if (!manifest.oauthScopes.some(value => value.includes(scope))) throw new Error(`Missing OAuth scope: ${scope}`);
+}
+
+const html = fs.readFileSync('frontend/index.html', 'utf8');
+const app = fs.readFileSync('frontend/app.js', 'utf8');
+const ids = [...app.matchAll(/\$\(['"]#([a-zA-Z0-9_-]+)['"]\)/g)].map(match => match[1]);
+for (const id of new Set(ids)) {
+  if (!html.includes(`id="${id}"`)) throw new Error(`Frontend references missing element: #${id}`);
+}
+
+const config = fs.readFileSync('frontend/config.js', 'utf8');
+if (!config.includes('/macros/s/') || !config.includes('/exec')) throw new Error('Frontend API URL missing');
+if (/AIza[0-9A-Za-z_-]{20,}/.test(backend + app + config)) throw new Error('Possible API key committed');
+if (/PALM-[0-9a-f]{20,}/i.test(backend + app + config)) throw new Error('Possible access token committed');
+
+const manifestWeb = JSON.parse(fs.readFileSync('frontend/manifest.webmanifest', 'utf8'));
+for (const icon of manifestWeb.icons) {
+  if (!fs.existsSync(`frontend/${icon.src}`)) throw new Error(`Missing PWA icon: ${icon.src}`);
+}
+for (const file of ['frontend/styles.css','frontend/sw.js','frontend/icons/icon.svg']) {
+  if (!fs.existsSync(file)) throw new Error(`Missing frontend asset: ${file}`);
+}
+
+console.log(JSON.stringify({
+  ok: true,
+  backendLines: backend.split('\n').length,
+  frontendElementsChecked: new Set(ids).size,
+  requiredFunctions: requiredFunctions.length,
+  pwaIcons: manifestWeb.icons.length
+}, null, 2));
