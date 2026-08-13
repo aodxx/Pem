@@ -36,6 +36,7 @@ button, input, select, textarea { font: inherit; }
 button, label { touch-action: manipulation; }
 button { -webkit-tap-highlight-color: transparent; }
 .hidden { display: none !important; }
+.ui-icon { display: block; width: 1em; height: 1em; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .topbar {
   position: sticky;
   top: 0;
@@ -93,7 +94,7 @@ main { width: min(100%, 820px); margin: auto; padding: 18px 16px 36px; }
 .capture-zone { display: grid; gap: 11px; }
 .action-card { cursor: pointer; }
 .camera-action { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 15px; min-height: 120px; padding: 20px; border: 0; border-radius: var(--radius); color: var(--forest-1000); background: var(--leaf); box-shadow: 0 17px 38px rgba(120, 175, 32, .18); }
-.action-icon { display: grid; place-items: center; width: 58px; height: 58px; border-radius: 18px; color: var(--leaf); background: var(--forest-950); font-size: 2rem; font-weight: 300; }
+.action-icon { display: grid; place-items: center; width: 58px; height: 58px; border-radius: 18px; color: var(--leaf); background: var(--forest-950); font-size: 1.85rem; font-weight: 300; }
 .action-copy { display: flex; min-width: 0; flex-direction: column; }
 .action-copy small { color: var(--forest-700); font: 900 .64rem/1.2 system-ui; letter-spacing: .1em; text-transform: uppercase; }
 .action-copy strong { margin: 5px 0 3px; font-size: 1.15rem; line-height: 1.2; }
@@ -204,10 +205,10 @@ label.low-confidence input { border-color: #d66b43; background: #fff5ef; box-sha
 .about dd { margin: 0; font-weight: 900; }
 .bottom-nav { position: fixed; z-index: 40; right: 0; bottom: 0; left: 0; display: grid; grid-template-columns: repeat(4, 1fr); width: min(100% - 20px, 570px); margin: 0 auto max(9px, env(safe-area-inset-bottom)); padding: 7px; border: 1px solid rgba(255,255,255,.1); border-radius: 22px; color: var(--white); background: rgba(7, 27, 21, .95); box-shadow: 0 15px 45px rgba(7,27,21,.28); backdrop-filter: blur(18px); }
 .nav-item { display: flex; min-height: 58px; flex-direction: column; align-items: center; justify-content: center; gap: 3px; border: 0; border-radius: 16px; color: rgba(255,255,255,.52); background: transparent; }
-.nav-item span { font-size: 1.18rem; line-height: 1; }
+.nav-item .nav-icon { display: grid; place-items: center; width: 25px; height: 25px; font-size: 1.28rem; line-height: 1; }
 .nav-item b { font-size: .65rem; }
 .nav-item.active { color: var(--forest-950); background: var(--leaf); }
-.nav-item.capture-nav span { font-size: 1.45rem; font-weight: 300; }
+.nav-item.capture-nav .nav-icon { font-size: 1.38rem; }
 .loading { position: fixed; z-index: 80; inset: 0; display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 14px; color: var(--white); background: rgba(7, 27, 21, .82); backdrop-filter: blur(7px); }
 .spinner { width: 49px; height: 49px; border: 4px solid rgba(255,255,255,.2); border-top-color: var(--leaf); border-radius: 50%; animation: spin .8s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
