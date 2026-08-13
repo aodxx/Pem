@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#174d37">
+  <meta name="description" content="สมุดบันทึกผลผลิตและรายได้สวนปาล์มจากใบชั่ง">
+  <title>สมุดสวนปาล์ม</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand-mark" aria-hidden="true">🌴</div>
+    <div><strong>สมุดสวนปาล์ม</strong><span id="sync-status">พร้อมใช้งาน</span></div>
+    <button id="install-button" class="icon-button hidden" type="button" aria-label="ติดตั้งแอป">＋</button>
+  </header>
+
+  <main>
+    <section id="view-home" class="view active" aria-labelledby="home-title">
+      <div class="hero">
+        <span class="eyebrow">บันทึกใบชั่งใหม่</span>
+        <h1 id="home-title">ถ่ายรูป แล้วให้ Gemini อ่านให้</h1>
+        <p>ตรวจแก้ก่อนบันทึกทุกครั้ง รูปและข้อมูลเก็บใน Google ของคุณ</p>
+      </div>
+
+      <div id="setup-alert" class="notice warning hidden">
+        <strong>เชื่อมต่อแอปก่อนเริ่มใช้งาน</strong>
+        <span>เปิดเมนู “ตั้งค่า” แล้วใส่ Access Token จาก Apps Script</span>
+      </div>
+
+      <div class="capture-grid">
+        <label class="action-card primary">
+          <input id="camera-input" type="file" accept="image/*" capture="environment" hidden>
+          <span class="action-icon">📷</span>
+          <strong>ถ่ายใบชั่ง</strong>
+          <small>เปิดกล้องหลัง</small>
+        </label>
+        <label class="action-card">
+          <input id="gallery-input" type="file" accept="image/jpeg,image/png,image/webp" hidden>
+          <span class="action-icon">🖼️</span>
+          <strong>เลือกรูป</strong>
+          <small>จากเครื่อง</small>
+        </label>
+      </div>
+      <button id="manual-button" class="button ghost full" type="button">＋ เพิ่มข้อมูลด้วยตนเอง</button>
+
+      <section id="preview-panel" class="panel hidden">
+        <div class="panel-heading"><div><span class="eyebrow">รูปใบชั่ง</span><h2>ตรวจรูปก่อนวิเคราะห์</h2></div></div>
+        <div class="image-stage"><img id="image-preview" alt="ตัวอย่างใบชั่งที่เลือก"></div>
+        <div class="button-row">
+          <button id="rotate-left" class="button secondary" type="button">↶ หมุนซ้าย</button>
+          <button id="rotate-right" class="button secondary" type="button">↷ หมุนขวา</button>
+        </div>
+        <button id="analyze-button" class="button primary full" type="button">✨ วิเคราะห์ใบชั่ง</button>
+      </section>
+
+      <section id="review-panel" class="panel hidden">
+        <div class="panel-heading">
+          <div><span class="eyebrow">ตรวจสอบก่อนบันทึก</span><h2 id="review-title">ข้อมูลจากใบชั่ง</h2></div>
+          <span id="confidence-badge" class="badge">—</span>
+        </div>
+        <div id="validation-messages"></div>
+        <form id="sale-form" autocomplete="off">
+          <fieldset><legend>ข้อมูลใบชั่ง</legend><div class="form-grid">
+            <label>เลขที่ใบชั่ง<input name="receiptNumber" inputmode="text"></label>
+            <label>วันที่ขาย<input name="saleDate" type="date" required></label>
+            <label>เวลาเข้า<input name="timeIn" type="time"></label>
+            <label>เวลาออก<input name="timeOut" type="time"></label>
+            <label class="span-2">ลานรับซื้อ<input name="buyerName"></label>
+            <label>สาขา<input name="branch"></label>
+            <label>ทะเบียนรถ<input name="vehiclePlate"></label>
+            <label class="span-2">ชื่อลูกค้า/เจ้าของผลผลิต<input name="customerName"></label>
+          </div></fieldset>
+          <fieldset><legend>น้ำหนัก (กก.)</legend><div class="form-grid three">
+            <label>น้ำหนักเข้า<input name="grossWeightKg" type="number" min="0" step="0.01" inputmode="decimal"></label>
+            <label>น้ำหนักออก<input name="tareWeightKg" type="number" min="0" step="0.01" inputmode="decimal"></label>
+            <label>น้ำหนักสุทธิ<input name="netWeightKg" type="number" min="0" step="0.01" inputmode="decimal" required></label>
+            <label>หักน้ำหนัก<input name="deductionWeightKg" type="number" min="0" step="0.01" inputmode="decimal"></label>
+            <label>น้ำหนักคิดเงิน<input name="payableWeightKg" type="number" min="0" step="0.01" inputmode="decimal"></label>
+          </div></fieldset>
+          <fieldset><legend>ราคาและยอดเงิน</legend><div class="form-grid">
+            <label>ราคา/กก.<input name="pricePerKg" type="number" min="0" step="0.01" inputmode="decimal" required></label>
+            <label>ยอดก่อนหัก<input name="grossAmount" type="number" min="0" step="0.01" inputmode="decimal"></label>
+            <label>ยอดหักรวม<input name="totalDeduction" type="number" min="0" step="0.01" inputmode="decimal"></label>
+            <label>ยอดรับสุทธิ<input name="netAmount" type="number" min="0" step="0.01" inputmode="decimal" required></label>
+          </div></fieldset>
+          <fieldset><div class="legend-row"><legend>รายการหัก</legend><button id="add-deduction" class="text-button" type="button">＋ เพิ่มรายการ</button></div><div id="deductions-list"></div></fieldset>
+          <fieldset><legend>หมายเหตุ</legend><label><textarea name="notes" rows="3"></textarea></label></fieldset>
+          <div class="sticky-actions">
+            <button id="cancel-review" class="button secondary" type="button">ยกเลิก</button>
+            <button id="save-button" class="button primary" type="submit">ยืนยันและบันทึก</button>
+          </div>
+        </form>
+      </section>
+    </section>
+
+    <section id="view-dashboard" class="view" aria-labelledby="dashboard-title">
+      <div class="section-title"><div><span class="eyebrow">ภาพรวมสวน</span><h1 id="dashboard-title">Dashboard</h1></div><select id="dashboard-year" aria-label="เลือกปี"></select></div>
+      <div class="summary-grid">
+        <article class="summary-card green"><span>ผลผลิตปีนี้</span><strong id="sum-weight">0</strong><small>ตัน</small></article>
+        <article class="summary-card gold"><span>รายได้ปีนี้</span><strong id="sum-revenue">฿0</strong><small>บาท</small></article>
+        <article class="summary-card"><span>ราคาเฉลี่ย</span><strong id="sum-price">0.00</strong><small>บาท/กก.</small></article>
+        <article class="summary-card"><span>จำนวนครั้ง</span><strong id="sum-count">0</strong><small>ครั้ง</small></article>
+      </div>
+      <section class="panel"><div class="panel-heading"><div><span class="eyebrow">แนวโน้มรายเดือน</span><h2>ผลผลิตและรายได้</h2></div></div><div id="monthly-chart" class="chart" aria-label="กราฟผลผลิตรายเดือน"></div></section>
+      <section class="panel"><div class="panel-heading"><div><span class="eyebrow">เปรียบเทียบลานรับซื้อ</span><h2>ร้านที่รับซื้อ</h2></div></div><div id="buyer-comparison" class="stack-list empty">ยังไม่มีข้อมูล</div></section>
+    </section>
+
+    <section id="view-history" class="view" aria-labelledby="history-title">
+      <div class="section-title"><div><span class="eyebrow">รายการย้อนหลัง</span><h1 id="history-title">ประวัติการขาย</h1></div></div>
+      <div class="filters"><input id="filter-month" type="month" aria-label="กรองเดือน"><input id="filter-search" type="search" placeholder="ค้นหาเลขใบชั่งหรือลานรับซื้อ"></div>
+      <div id="history-list" class="history-list empty">ยังไม่มีข้อมูลการขาย</div>
+    </section>
+
+    <section id="view-settings" class="view" aria-labelledby="settings-title">
+      <div class="section-title"><div><span class="eyebrow">การเชื่อมต่อ</span><h1 id="settings-title">ตั้งค่า</h1></div></div>
+      <section class="panel settings-form">
+        <label>Apps Script Web App URL<input id="api-url" type="url" readonly></label>
+        <label>Access Token<input id="access-token" type="password" autocomplete="off" placeholder="PALM-..."></label>
+        <p class="help">Token เก็บเฉพาะในเครื่องนี้และใช้เรียก Backend ส่วนตัวของคุณ</p>
+        <button id="save-settings" class="button primary full" type="button">บันทึกและทดสอบการเชื่อมต่อ</button>
+        <div id="connection-result" class="notice hidden"></div>
+      </section>
+      <section class="panel"><h2>เกี่ยวกับระบบ</h2><dl class="about"><div><dt>เวอร์ชัน</dt><dd id="app-version">—</dd></div><div><dt>การเก็บข้อมูล</dt><dd>Google Sheets + Drive</dd></div><div><dt>AI</dt><dd>Gemini Vision</dd></div></dl></section>
+    </section>
+  </main>
+
+  <nav class="bottom-nav" aria-label="เมนูหลัก">
+    <button class="nav-item active" data-view="home" type="button"><span>＋</span>บันทึก</button>
+    <button class="nav-item" data-view="dashboard" type="button"><span>▥</span>ภาพรวม</button>
+    <button class="nav-item" data-view="history" type="button"><span>☷</span>ประวัติ</button>
+    <button class="nav-item" data-view="settings" type="button"><span>⚙</span>ตั้งค่า</button>
+  </nav>
+
+  <div id="loading" class="loading hidden" role="status"><div class="spinner"></div><strong id="loading-text">กำลังทำงาน…</strong></div>
+  <div id="toast" class="toast hidden" role="status"></div>
+  <script src="config.js"></script><script src="app.js" defer></script>
+</body>
+</html>
