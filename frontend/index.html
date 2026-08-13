@@ -151,6 +151,20 @@
     <button class="nav-item" data-view="settings" type="button"><span class="nav-icon" aria-hidden="true"><svg class="ui-icon" viewBox="0 0 24 24"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.38a2 2 0 0 0-.73-2.73l-.15-.09a2 2 0 0 1-1-1.74v-.51a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2Z"/><circle cx="12" cy="12" r="3"/></svg></span><b>ตั้งค่า</b></button>
   </nav>
 
+  <dialog id="receipt-viewer" class="receipt-viewer" aria-labelledby="receipt-viewer-title">
+    <div class="viewer-header">
+      <div><span class="step-kicker">ภาพต้นฉบับจาก Google Drive</span><h2 id="receipt-viewer-title">ภาพใบชั่ง</h2><p id="receipt-viewer-meta">—</p></div>
+      <button id="close-receipt-viewer" class="viewer-close" type="button" aria-label="ปิดภาพ">×</button>
+    </div>
+    <div class="viewer-stage">
+      <iframe id="receipt-frame" title="ภาพใบชั่งจาก Google Drive" loading="lazy" allow="fullscreen"></iframe>
+    </div>
+    <div class="viewer-actions">
+      <button id="viewer-edit-sale" class="button secondary" type="button"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg> แก้ไขข้อมูล</button>
+      <a id="open-receipt-drive" class="button primary" href="#" target="_blank" rel="noopener"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 3h6v6M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg> เปิดใน Drive</a>
+    </div>
+  </dialog>
+
   <div id="loading" class="loading hidden" role="status"><div class="spinner"></div><strong id="loading-text">กำลังทำงาน…</strong></div>
   <div id="toast" class="toast hidden" role="status"></div>
   <script src="config.js"></script><script src="app.js" defer></script>
