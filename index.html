@@ -103,8 +103,8 @@
     <section id="view-dashboard" class="view" aria-labelledby="dashboard-title">
       <div class="section-title"><div><span class="eyebrow">ภาพรวมสวน</span><h1 id="dashboard-title">Dashboard</h1></div><select id="dashboard-year" aria-label="เลือกปี"></select></div>
       <div class="summary-grid">
-        <article class="summary-card green"><span>ผลผลิตปีนี้</span><strong id="sum-weight">0</strong><small>ตัน</small></article>
-        <article class="summary-card gold"><span>รายได้ปีนี้</span><strong id="sum-revenue">฿0</strong><small>บาท</small></article>
+        <article class="summary-card green"><span id="sum-weight-label">ผลผลิตทั้งหมด</span><strong id="sum-weight">0</strong><small>ตัน</small></article>
+        <article class="summary-card gold"><span id="sum-revenue-label">รายได้ทั้งหมด</span><strong id="sum-revenue">฿0</strong><small>บาท</small></article>
         <article class="summary-card"><span>ราคาเฉลี่ย</span><strong id="sum-price">0.00</strong><small>บาท/กก.</small></article>
         <article class="summary-card"><span>จำนวนครั้ง</span><strong id="sum-count">0</strong><small>ครั้ง</small></article>
       </div>
@@ -113,8 +113,8 @@
     </section>
 
     <section id="view-history" class="view" aria-labelledby="history-title">
-      <div class="section-title"><div><span class="eyebrow">รายการย้อนหลัง</span><h1 id="history-title">ประวัติการขาย</h1></div></div>
-      <div class="filters"><input id="filter-month" type="month" aria-label="กรองเดือน"><input id="filter-search" type="search" placeholder="ค้นหาเลขใบชั่งหรือลานรับซื้อ"></div>
+      <div class="section-title"><div><span class="eyebrow">รายการย้อนหลัง</span><h1 id="history-title">ประวัติการขาย</h1><small id="history-count">กำลังโหลด…</small></div></div>
+      <div class="filters"><input id="filter-month" type="month" aria-label="กรองเดือน"><input id="filter-search" type="search" placeholder="ค้นหาเลขใบชั่งหรือลานรับซื้อ"><button id="clear-filters" class="button secondary" type="button">ล้างตัวกรอง</button></div>
       <div id="history-list" class="history-list empty">ยังไม่มีข้อมูลการขาย</div>
     </section>
 
