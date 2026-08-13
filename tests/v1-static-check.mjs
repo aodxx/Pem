@@ -1,7 +1,9 @@
 import fs from 'node:fs';
 import vm from 'node:vm';
 
-const backend = fs.readFileSync('Palm-Yield-Ledger-Code.gs', 'utf8');
+const backendPath = fs.existsSync('apps-script/Code.gs') ? 'apps-script/Code.gs' : 'Palm-Yield-Ledger-Code.gs';
+const manifestPath = fs.existsSync('apps-script/appsscript.json') ? 'apps-script/appsscript.json' : 'appsscript.json';
+const backend = fs.readFileSync(backendPath, 'utf8');
 new vm.Script(backend, { filename: 'Code.gs' });
 
 const requiredFunctions = [
@@ -15,7 +17,7 @@ for (const name of requiredFunctions) {
   }
 }
 
-const manifest = JSON.parse(fs.readFileSync('appsscript.json', 'utf8'));
+const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
 if (manifest.timeZone !== 'Asia/Bangkok' || manifest.runtimeVersion !== 'V8') throw new Error('Invalid Apps Script manifest');
 for (const scope of ['spreadsheets','drive','script.external_request']) {
   if (!manifest.oauthScopes.some(value => value.includes(scope))) throw new Error(`Missing OAuth scope: ${scope}`);
