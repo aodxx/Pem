@@ -31,6 +31,12 @@ for (const reliabilityMarker of ['indexedDB.open', 'processPendingSaves', "api('
 for (const visibilityMarker of ['history-count', 'clear-filters']) {
   if (!html.includes(visibilityMarker)) throw new Error(`Missing record-visibility marker: ${visibilityMarker}`);
 }
+for (const receiptViewerMarker of ['receipt-viewer', 'receipt-frame', 'viewer-edit-sale']) {
+  if (!html.includes(receiptViewerMarker)) throw new Error(`Missing receipt viewer marker: ${receiptViewerMarker}`);
+}
+for (const receiptViewerLogic of ['openReceiptViewer', 'ImageFileID', '/preview']) {
+  if (!app.includes(receiptViewerLogic)) throw new Error(`Missing receipt viewer logic: ${receiptViewerLogic}`);
+}
 if (!app.includes('<option value="all">ทุกปี</option>')) throw new Error('Missing all-years dashboard option');
 const ids = [...app.matchAll(/\$\(['"]#([a-zA-Z0-9_-]+)['"]\)/g)].map(match => match[1]);
 for (const id of new Set(ids)) {

@@ -6,7 +6,7 @@ const $$ = selector => Array.from(document.querySelectorAll(selector));
 const state = {
   accessToken: localStorage.getItem('palmAccessToken') || '', originalDataUrl: '', previewDataUrl: '', rotation: 0,
   source: 'MANUAL', receipt: null, ocrRunId: '', model: '', editingSaleId: '', expectedUpdatedAt: '', installPrompt: null,
-  syncInProgress: false
+  syncInProgress: false, viewingSaleId: ''
 };
 
 const QUEUE_DB = 'palm-ledger-offline-v1';
@@ -20,6 +20,7 @@ function init() {
   $('#access-token').value = state.accessToken;
   $('#app-version').textContent = CONFIG.version;
   bindNavigation(); bindCapture(); bindForm(); bindSettings(); bindFilters(); setupInstall();
+  bindReceiptViewer();
   populateYears(); updateConnectionUI(); restoreDraft();
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js').catch(() => {});
   initSaveQueue().then(async () => { await refreshQueueUI(); processPendingSaves(false); }).catch(() => {});
@@ -68,6 +69,18 @@ function bindFilters() {
   $('#filter-search').addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(loadHistory, 300); });
   $('#clear-filters').addEventListener('click', () => { $('#filter-month').value = ''; $('#filter-search').value = ''; loadHistory(); });
   $('#dashboard-year').addEventListener('change', loadDashboard);
+}
+
+function bindReceiptViewer() {
+  const viewer = $('#receipt-viewer');
+  $('#close-receipt-viewer').addEventListener('click', closeReceiptViewer);
+  $('#viewer-edit-sale').addEventListener('click', () => {
+    const saleId = state.viewingSaleId;
+    closeReceiptViewer();
+    if (saleId) editSale(saleId);
+  });
+  viewer.addEventListener('click', event => { if (event.target === viewer) closeReceiptViewer(); });
+  viewer.addEventListener('cancel', event => { event.preventDefault(); closeReceiptViewer(); });
 }
 
 async function selectImage(event, source) {
@@ -291,9 +304,33 @@ function renderHistory(items, pending = []) {
   const container = $('#history-list'); container.classList.toggle('empty', !items.length && !pending.length);
   if (!items.length && !pending.length) { container.textContent = 'ยังไม่มีข้อมูลการขาย'; return; }
   const pendingHtml = pending.map(job => { const sale = job.payload?.sale || {}; return `<article class="history-card pending"><div><h3>${escapeHtml(formatThaiDate(sale.saleDate))}</h3><p>${escapeHtml(sale.buyerName || 'ไม่ระบุลาน')} • ${formatNumber(sale.netWeightKg, 0)} กก.</p><p>ใบชั่ง ${escapeHtml(sale.receiptNumber || '—')}</p></div><div class="amount"><strong>เก็บไว้แล้ว</strong><small>${job.status === 'blocked' ? 'รอยืนยันรายการซ้ำ' : 'กำลังส่งอัตโนมัติ'}</small></div></article>`; }).join('');
-  const savedHtml = items.map(item => `<article class="history-card" data-sale-id="${escapeHtml(item.SaleID)}"><div><h3>${escapeHtml(formatThaiDate(item.SaleDate))}</h3><p>${escapeHtml(item.BuyerNameRaw || 'ไม่ระบุลาน')} • ${formatNumber(item.NetWeightKg, 0)} กก.</p><p>ใบชั่ง ${escapeHtml(item.ReceiptNumber || '—')} • ${formatNumber(item.PricePerKg, 2)} บาท/กก.</p></div><div class="amount"><strong>${formatMoney(item.NetAmount)}</strong><small>แตะเพื่อดู/แก้ไข</small></div></article>`).join('');
+  const savedHtml = items.map(item => {
+    const imageButton = item.ImageFileID ? `<button class="history-action view-receipt" type="button" data-sale-id="${escapeHtml(item.SaleID)}" data-file-id="${escapeHtml(item.ImageFileID)}" data-drive-url="${escapeHtml(item.imageUrl || '')}" data-meta="${escapeHtml(`ใบชั่ง ${item.ReceiptNumber || '—'} • ${formatThaiDate(item.SaleDate)}`)}"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3Z"/><circle cx="12" cy="13" r="3"/></svg> ดูภาพใบชั่ง</button>` : `<span class="no-receipt-image">ไม่มีรูปภาพ</span>`;
+    return `<article class="history-card" data-sale-id="${escapeHtml(item.SaleID)}"><div class="history-main"><div><h3>${escapeHtml(formatThaiDate(item.SaleDate))}</h3><p>${escapeHtml(item.BuyerNameRaw || 'ไม่ระบุลาน')} • ${formatNumber(item.NetWeightKg, 0)} กก.</p><p>ใบชั่ง ${escapeHtml(item.ReceiptNumber || '—')} • ${formatNumber(item.PricePerKg, 2)} บาท/กก.</p></div><div class="amount"><strong>${formatMoney(item.NetAmount)}</strong><small>ยอดรับสุทธิ</small></div></div><div class="history-actions">${imageButton}<button class="history-action edit-sale" type="button" data-sale-id="${escapeHtml(item.SaleID)}"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg> แก้ไขข้อมูล</button></div></article>`;
+  }).join('');
   container.innerHTML = pendingHtml + savedHtml;
-  $$('.history-card').forEach(card => card.addEventListener('click', () => editSale(card.dataset.saleId)));
+  $$('.view-receipt').forEach(button => button.addEventListener('click', () => openReceiptViewer(button.dataset)));
+  $$('.edit-sale').forEach(button => button.addEventListener('click', () => editSale(button.dataset.saleId)));
+}
+
+function openReceiptViewer(data) {
+  const fileId = String(data.fileId || '');
+  if (!/^[a-zA-Z0-9_-]+$/.test(fileId)) return toast('ไม่พบไฟล์ภาพของรายการนี้');
+  state.viewingSaleId = data.saleId || '';
+  $('#receipt-viewer-meta').textContent = data.meta || 'ภาพใบชั่ง';
+  $('#receipt-frame').src = `https://drive.google.com/file/d/${fileId}/preview`;
+  $('#open-receipt-drive').href = data.driveUrl || `https://drive.google.com/file/d/${fileId}/view`;
+  const viewer = $('#receipt-viewer');
+  if (typeof viewer.showModal === 'function') viewer.showModal();
+  else viewer.setAttribute('open', '');
+}
+
+function closeReceiptViewer() {
+  const viewer = $('#receipt-viewer');
+  $('#receipt-frame').src = 'about:blank';
+  state.viewingSaleId = '';
+  if (typeof viewer.close === 'function' && viewer.open) viewer.close();
+  else viewer.removeAttribute('open');
 }
 
 async function editSale(saleId) {
