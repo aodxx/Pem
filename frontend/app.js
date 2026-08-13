@@ -294,8 +294,13 @@ async function loadHistory() {
     if (monthValue) { filters.year = monthValue.slice(0, 4); filters.month = monthValue.slice(5, 7); }
     const items = await api('sales.list', filters);
     const filtered = items.filter(item => !query || `${item.ReceiptNumber || ''} ${item.BuyerNameRaw || ''}`.toLowerCase().includes(query.toLowerCase()));
-    const pending = await queueGetAll().catch(() => []);
-    $('#history-count').textContent = (monthValue || query) ? `แสดง ${filtered.length} รายการตามตัวกรอง` : `พบ ${filtered.length} รายการใน Google Sheets`;
+    const pending = (await queueGetAll().catch(() => [])).filter(job => {
+      const sale = job.payload?.sale || {};
+      if (monthValue && String(sale.saleDate || '').slice(0, 7) !== monthValue) return false;
+      return !query || `${sale.receiptNumber || ''} ${sale.buyerName || ''}`.toLowerCase().includes(query.toLowerCase());
+    });
+    const totalVisible = filtered.length + pending.length;
+    $('#history-count').textContent = (monthValue || query) ? `ล่าสุดอยู่บนสุด • แสดง ${totalVisible} รายการตามตัวกรอง` : `ล่าสุดอยู่บนสุด • พบ ${totalVisible} รายการ`;
     renderHistory(filtered, pending);
   } catch (error) { $('#history-count').textContent = 'โหลดรายการไม่สำเร็จ'; handleError(error); } finally { setLoading(false); }
 }
@@ -303,14 +308,41 @@ async function loadHistory() {
 function renderHistory(items, pending = []) {
   const container = $('#history-list'); container.classList.toggle('empty', !items.length && !pending.length);
   if (!items.length && !pending.length) { container.textContent = 'ยังไม่มีข้อมูลการขาย'; return; }
-  const pendingHtml = pending.map(job => { const sale = job.payload?.sale || {}; return `<article class="history-card pending"><div><h3>${escapeHtml(formatThaiDate(sale.saleDate))}</h3><p>${escapeHtml(sale.buyerName || 'ไม่ระบุลาน')} • ${formatNumber(sale.netWeightKg, 0)} กก.</p><p>ใบชั่ง ${escapeHtml(sale.receiptNumber || '—')}</p></div><div class="amount"><strong>เก็บไว้แล้ว</strong><small>${job.status === 'blocked' ? 'รอยืนยันรายการซ้ำ' : 'กำลังส่งอัตโนมัติ'}</small></div></article>`; }).join('');
-  const savedHtml = items.map(item => {
-    const imageButton = item.ImageFileID ? `<button class="history-action view-receipt" type="button" data-sale-id="${escapeHtml(item.SaleID)}" data-file-id="${escapeHtml(item.ImageFileID)}" data-drive-url="${escapeHtml(item.imageUrl || '')}" data-meta="${escapeHtml(`ใบชั่ง ${item.ReceiptNumber || '—'} • ${formatThaiDate(item.SaleDate)}`)}"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3Z"/><circle cx="12" cy="13" r="3"/></svg> ดูภาพใบชั่ง</button>` : `<span class="no-receipt-image">ไม่มีรูปภาพ</span>`;
-    return `<article class="history-card" data-sale-id="${escapeHtml(item.SaleID)}"><div class="history-main"><div><h3>${escapeHtml(formatThaiDate(item.SaleDate))}</h3><p>${escapeHtml(item.BuyerNameRaw || 'ไม่ระบุลาน')} • ${formatNumber(item.NetWeightKg, 0)} กก.</p><p>ใบชั่ง ${escapeHtml(item.ReceiptNumber || '—')} • ${formatNumber(item.PricePerKg, 2)} บาท/กก.</p></div><div class="amount"><strong>${formatMoney(item.NetAmount)}</strong><small>ยอดรับสุทธิ</small></div></div><div class="history-actions">${imageButton}<button class="history-action edit-sale" type="button" data-sale-id="${escapeHtml(item.SaleID)}"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg> แก้ไขข้อมูล</button></div></article>`;
+  const entries = [
+    ...items.map((item, index) => ({ kind: 'saved', item, date: saleDateValue(item.SaleDate), order: Date.parse(item.UpdatedAt || item.CreatedAt || '') || -index })),
+    ...pending.map((job, index) => ({ kind: 'pending', job, date: saleDateValue(job.payload?.sale?.saleDate), order: Number(job.createdAt || 0) || -index }))
+  ].sort((a, b) => b.date - a.date || b.order - a.order);
+
+  container.innerHTML = entries.map((entry, index) => {
+    const latestBadge = index === 0 ? '<span class="latest-badge">ล่าสุด</span>' : '';
+    const card = entry.kind === 'pending' ? renderPendingHistoryCard(entry.job, latestBadge) : renderSavedHistoryCard(entry.item, latestBadge);
+    if (index === entries.length - 1) return card;
+    return card + renderSaleGap(entry.date, entries[index + 1].date);
   }).join('');
-  container.innerHTML = pendingHtml + savedHtml;
   $$('.view-receipt').forEach(button => button.addEventListener('click', () => openReceiptViewer(button.dataset)));
   $$('.edit-sale').forEach(button => button.addEventListener('click', () => editSale(button.dataset.saleId)));
+}
+
+function renderPendingHistoryCard(job, latestBadge) {
+  const sale = job.payload?.sale || {};
+  return `<article class="history-card pending"><div class="history-main"><div><div class="history-date-row"><h3>${escapeHtml(formatThaiDate(sale.saleDate))}</h3>${latestBadge}</div><p>${escapeHtml(sale.buyerName || 'ไม่ระบุลาน')} • ${formatNumber(sale.netWeightKg, 0)} กก.</p><p>ใบชั่ง ${escapeHtml(sale.receiptNumber || '—')}</p></div><div class="amount"><strong>เก็บไว้แล้ว</strong><small>${job.status === 'blocked' ? 'รอยืนยันรายการซ้ำ' : 'กำลังส่งอัตโนมัติ'}</small></div></div></article>`;
+}
+
+function renderSavedHistoryCard(item, latestBadge) {
+    const imageButton = item.ImageFileID ? `<button class="history-action view-receipt" type="button" data-sale-id="${escapeHtml(item.SaleID)}" data-file-id="${escapeHtml(item.ImageFileID)}" data-drive-url="${escapeHtml(item.imageUrl || '')}" data-meta="${escapeHtml(`ใบชั่ง ${item.ReceiptNumber || '—'} • ${formatThaiDate(item.SaleDate)}`)}"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3Z"/><circle cx="12" cy="13" r="3"/></svg> ดูภาพใบชั่ง</button>` : `<span class="no-receipt-image">ไม่มีรูปภาพ</span>`;
+  return `<article class="history-card" data-sale-id="${escapeHtml(item.SaleID)}"><div class="history-main"><div><div class="history-date-row"><h3>${escapeHtml(formatThaiDate(item.SaleDate))}</h3>${latestBadge}</div><p>${escapeHtml(item.BuyerNameRaw || 'ไม่ระบุลาน')} • ${formatNumber(item.NetWeightKg, 0)} กก.</p><p>ใบชั่ง ${escapeHtml(item.ReceiptNumber || '—')} • ${formatNumber(item.PricePerKg, 2)} บาท/กก.</p></div><div class="amount"><strong>${formatMoney(item.NetAmount)}</strong><small>ยอดรับสุทธิ</small></div></div><div class="history-actions">${imageButton}<button class="history-action edit-sale" type="button" data-sale-id="${escapeHtml(item.SaleID)}"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg> แก้ไขข้อมูล</button></div></article>`;
+}
+
+function renderSaleGap(newerDate, olderDate) {
+  if (!Number.isFinite(newerDate) || !Number.isFinite(olderDate)) return '<div class="sale-gap"><span>ระยะรอบไม่ทราบ</span></div>';
+  const days = Math.max(0, Math.round((newerDate - olderDate) / 86400000));
+  const label = days === 0 ? 'รอบเดียวกัน • วันเดียวกัน' : `ระยะรอบ ${formatNumber(days, 0)} วัน`;
+  return `<div class="sale-gap" aria-label="${escapeHtml(label)}"><i aria-hidden="true"></i><span>${escapeHtml(label)}</span><i aria-hidden="true"></i></div>`;
+}
+
+function saleDateValue(value) {
+  const match = String(value || '').slice(0, 10).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  return match ? Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])) : Number.NEGATIVE_INFINITY;
 }
 
 function openReceiptViewer(data) {

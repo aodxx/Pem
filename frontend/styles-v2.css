@@ -181,10 +181,12 @@ label.low-confidence input { border-color: #d66b43; background: #fff5ef; box-sha
 .search-field span { position: absolute; z-index: 1; top: 13px; left: 13px; color: var(--forest-700); font-size: 1.15rem; }
 .search-field input { padding-left: 40px; }
 .filters .button { min-height: 50px; padding-inline: 14px; white-space: nowrap; }
-.history-list { display: grid; gap: 10px; }
+.history-list { display: grid; gap: 0; }
 .history-card { position: relative; display: block; padding: 17px 17px 14px 21px; border: 1px solid var(--line); border-radius: 19px; background: var(--paper); box-shadow: var(--shadow-sm); }
 .history-card::before { content: ""; position: absolute; top: 16px; bottom: 16px; left: 0; width: 4px; border-radius: 0 4px 4px 0; background: var(--leaf-strong); }
 .history-main { display: grid; grid-template-columns: 1fr auto; gap: 9px; }
+.history-date-row { display: flex; align-items: center; gap: 8px; }
+.latest-badge { padding: 4px 8px; border-radius: 999px; color: var(--forest-950); background: var(--leaf); font-size: .6rem; font-weight: 900; }
 .history-card h3 { margin: 0; font-size: .95rem; }
 .history-card p { margin: 4px 0 0; color: var(--muted); font-size: .73rem; }
 .history-card .amount { text-align: right; }
@@ -198,6 +200,11 @@ label.low-confidence input { border-color: #d66b43; background: #fff5ef; box-sha
 .history-action .ui-icon { width: 17px; height: 17px; }
 .history-action.edit-sale { color: var(--muted); background: transparent; }
 .no-receipt-image { margin-right: auto; color: var(--muted); font-size: .7rem; }
+.sale-gap { display: grid; grid-template-columns: 1fr auto 1fr; min-height: 54px; align-items: center; gap: 9px; padding: 0 18px; color: var(--forest-700); }
+.sale-gap i { position: relative; height: 100%; }
+.sale-gap i::before { content: ""; position: absolute; left: 50%; width: 2px; height: 100%; transform: translateX(-50%); background: linear-gradient(180deg, var(--leaf-strong), rgba(158,222,44,.2)); }
+.sale-gap i:first-child::after, .sale-gap i:last-child::after { content: ""; position: absolute; top: 50%; left: 50%; width: 7px; height: 7px; transform: translate(-50%,-50%); border-radius: 50%; background: var(--leaf-strong); }
+.sale-gap span { padding: 6px 10px; border: 1px solid rgba(33,96,71,.12); border-radius: 999px; background: var(--leaf-soft); font-size: .67rem; font-weight: 900; white-space: nowrap; }
 .receipt-viewer { width: min(94vw, 820px); height: min(90vh, 860px); margin: auto; padding: 0; overflow: hidden; border: 0; border-radius: 24px; color: var(--ink); background: var(--paper); box-shadow: 0 28px 90px rgba(0,0,0,.36); }
 .receipt-viewer::backdrop { background: rgba(3,18,12,.78); backdrop-filter: blur(5px); }
 .viewer-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 15px; padding: 18px 18px 15px; border-bottom: 1px solid var(--line); }

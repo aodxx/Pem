@@ -37,6 +37,10 @@ for (const receiptViewerMarker of ['receipt-viewer', 'receipt-frame', 'viewer-ed
 for (const receiptViewerLogic of ['openReceiptViewer', 'ImageFileID', '/preview']) {
   if (!app.includes(receiptViewerLogic)) throw new Error(`Missing receipt viewer logic: ${receiptViewerLogic}`);
 }
+for (const timelineLogic of ['saleDateValue', 'renderSaleGap', 'b.date - a.date', 'ระยะรอบ']) {
+  if (!app.includes(timelineLogic)) throw new Error(`Missing chronological timeline logic: ${timelineLogic}`);
+}
+if (!fs.readFileSync('frontend/styles-v2.css', 'utf8').includes('.sale-gap')) throw new Error('Missing sale timeline connector styles');
 if (!app.includes('<option value="all">ทุกปี</option>')) throw new Error('Missing all-years dashboard option');
 const ids = [...app.matchAll(/\$\(['"]#([a-zA-Z0-9_-]+)['"]\)/g)].map(match => match[1]);
 for (const id of new Set(ids)) {
