@@ -68,4 +68,9 @@ if (summary.totalWeightKg !== 1500 || summary.totalRevenue !== 12500 || summary.
 const schema = context.getGeminiReceiptJsonSchema_();
 if (!schema.required.includes('netWeightKg') || !schema.properties.deductions) throw new Error('Gemini schema incomplete');
 
-console.log(JSON.stringify({ ok: true, validationWarnings: mismatch.warnings.length, duplicateScore: duplicates[0].score, summary }, null, 2));
+context.getIdempotentSale_ = key => key === 'saved-key' ? { SaleID: 'SALE_SAVED', NetAmount: 12500 } : null;
+const savedStatus = context.getSaleSaveStatus_('saved-key');
+const pendingStatus = context.getSaleSaveStatus_('pending-key');
+if (!savedStatus.saved || savedStatus.sale.SaleID !== 'SALE_SAVED' || pendingStatus.saved) throw new Error('Save status lookup failed');
+
+console.log(JSON.stringify({ ok: true, validationWarnings: mismatch.warnings.length, duplicateScore: duplicates[0].score, summary, saveStatus: savedStatus.state }, null, 2));
