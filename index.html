@@ -29,6 +29,10 @@
         <strong>เชื่อมต่อแอปก่อนเริ่มใช้งาน</strong>
         <span>เปิดเมนู “ตั้งค่า” แล้วใส่ Access Token จาก Apps Script</span>
       </div>
+      <div id="pending-banner" class="notice sync-notice hidden">
+        <div><strong id="pending-title">มีรายการรอส่ง</strong><span id="pending-message">ข้อมูลเก็บอยู่ในเครื่องนี้อย่างปลอดภัย</span></div>
+        <button id="retry-pending" class="button secondary" type="button">ส่งอีกครั้ง</button>
+      </div>
 
       <div class="capture-grid">
         <label class="action-card primary">
@@ -138,5 +142,4 @@
   <div id="toast" class="toast hidden" role="status"></div>
   <script src="config.js"></script><script src="app.js" defer></script>
 </body>
-<!-- Pages rebuild 2026-08-13 -->
 </html>
