@@ -44,17 +44,19 @@
       <div class="capture-zone">
         <label class="action-card primary camera-action">
           <input id="camera-input" type="file" accept="image/*" capture="environment" hidden>
-          <span class="action-icon" aria-hidden="true">⌗</span>
+          <span class="action-icon" aria-hidden="true">
+            <svg class="ui-icon" viewBox="0 0 24 24"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3Z"/><circle cx="12" cy="13" r="3"/></svg>
+          </span>
           <span class="action-copy"><small>วิธีที่เร็วที่สุด</small><strong>เปิดกล้องถ่ายใบชั่ง</strong><em>แตะเพื่อเริ่มบันทึกรายการใหม่</em></span>
           <span class="action-arrow" aria-hidden="true">→</span>
         </label>
         <div class="alternate-actions">
           <label class="action-card compact">
             <input id="gallery-input" type="file" accept="image/jpeg,image/png,image/webp" hidden>
-            <span class="mini-icon" aria-hidden="true">▧</span><span><strong>เลือกรูปจากเครื่อง</strong><small>JPEG, PNG หรือ WebP</small></span>
+            <span class="mini-icon" aria-hidden="true"><svg class="ui-icon" viewBox="0 0 24 24"><path d="M16 5h6M19 2v6"/><rect width="14" height="14" x="3" y="5" rx="2"/><circle cx="8.5" cy="10.5" r="1.5"/><path d="m17 16-3.5-3.5L5 21"/></svg></span><span><strong>เลือกรูปจากเครื่อง</strong><small>JPEG, PNG หรือ WebP</small></span>
           </label>
           <button id="manual-button" class="action-card compact" type="button">
-            <span class="mini-icon" aria-hidden="true">＋</span><span><strong>กรอกข้อมูลเอง</strong><small>ไม่ใช้รูปใบชั่ง</small></span>
+            <span class="mini-icon" aria-hidden="true"><svg class="ui-icon" viewBox="0 0 24 24"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2Z"/><polyline points="14 2 14 8 20 8"/><path d="M8 13h8M8 17h8"/></svg></span><span><strong>กรอกข้อมูลเอง</strong><small>ไม่ใช้รูปใบชั่ง</small></span>
           </button>
         </div>
       </div>
@@ -131,7 +133,7 @@
     <section id="view-settings" class="view" aria-labelledby="settings-title">
       <div class="section-title"><div><span class="eyebrow">ระบบของคุณ</span><h1 id="settings-title">ตั้งค่า</h1></div></div>
       <section class="panel settings-form">
-        <div class="settings-intro"><span aria-hidden="true">⌁</span><div><strong>การเชื่อมต่อส่วนตัว</strong><p>เชื่อมแอปนี้กับ Google Apps Script ของคุณ</p></div></div>
+        <div class="settings-intro"><span aria-hidden="true"><svg class="ui-icon" viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg></span><div><strong>การเชื่อมต่อส่วนตัว</strong><p>เชื่อมแอปนี้กับ Google Apps Script ของคุณ</p></div></div>
         <label>Apps Script Web App URL<input id="api-url" type="url" readonly></label>
         <label>Access Token<input id="access-token" type="password" autocomplete="off" placeholder="PALM-..."></label>
         <p class="help">Token เก็บเฉพาะในเครื่องนี้และใช้เรียก Backend ส่วนตัวของคุณ</p>
@@ -143,10 +145,10 @@
   </main>
 
   <nav class="bottom-nav" aria-label="เมนูหลัก">
-    <button class="nav-item active capture-nav" data-view="home" type="button"><span>＋</span><b>บันทึก</b></button>
-    <button class="nav-item" data-view="dashboard" type="button"><span>▥</span><b>ภาพรวม</b></button>
-    <button class="nav-item" data-view="history" type="button"><span>☷</span><b>รายการ</b></button>
-    <button class="nav-item" data-view="settings" type="button"><span>⚙</span><b>ตั้งค่า</b></button>
+    <button class="nav-item active capture-nav" data-view="home" type="button"><span class="nav-icon" aria-hidden="true"><svg class="ui-icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M8 12h8M12 8v8"/></svg></span><b>บันทึก</b></button>
+    <button class="nav-item" data-view="dashboard" type="button"><span class="nav-icon" aria-hidden="true"><svg class="ui-icon" viewBox="0 0 24 24"><rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/></svg></span><b>ภาพรวม</b></button>
+    <button class="nav-item" data-view="history" type="button"><span class="nav-icon" aria-hidden="true"><svg class="ui-icon" viewBox="0 0 24 24"><path d="M4 2v20l2-2 2 2 2-2 2 2 2-2 2 2 2-2 2 2V2l-2 2-2-2-2 2-2-2-2 2-2-2-2 2Z"/><path d="M16 8h-6M16 12h-6M13 16h-3"/></svg></span><b>รายการ</b></button>
+    <button class="nav-item" data-view="settings" type="button"><span class="nav-icon" aria-hidden="true"><svg class="ui-icon" viewBox="0 0 24 24"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.38a2 2 0 0 0-.73-2.73l-.15-.09a2 2 0 0 1-1-1.74v-.51a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2Z"/><circle cx="12" cy="12" r="3"/></svg></span><b>ตั้งค่า</b></button>
   </nav>
 
   <div id="loading" class="loading hidden" role="status"><div class="spinner"></div><strong id="loading-text">กำลังทำงาน…</strong></div>
