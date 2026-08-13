@@ -2,7 +2,8 @@ import fs from 'node:fs';
 import vm from 'node:vm';
 import crypto from 'node:crypto';
 
-const code = fs.readFileSync('Palm-Yield-Ledger-Code.gs', 'utf8');
+const backendPath = fs.existsSync('apps-script/Code.gs') ? 'apps-script/Code.gs' : 'Palm-Yield-Ledger-Code.gs';
+const code = fs.readFileSync(backendPath, 'utf8');
 const context = {
   console,
   isFinite,
