@@ -1,5 +1,5 @@
 /**
- * Palm Yield Ledger Backend v1.0.0
+ * Palm Yield Ledger Backend v1.1.0
  * Apps Script Project: 1PzG5lE7bxpSMSyO_BOBx9DGuFTZMTw_7mBV7o12c6HoWMKqzLlmwaGaz
  * รวมจากไฟล์ Phase 1 ใน aodxx/Pem เพื่อให้คัดลอกวางใน Code.gs ได้ครั้งเดียว
  */
@@ -8,7 +8,7 @@
 const APP_CONFIG = Object.freeze({
   appName: 'Palm Yield Ledger',
   serviceName: 'palm-yield-ledger-api',
-  version: '1.0.0',
+  version: '1.1.0',
   apiVersion: 'v1',
   timeZone: 'Asia/Bangkok',
   spreadsheetId: '1S5WtdhsVUOQ5APZ_EiBKSZBTeyi6VKnVLeaGbWPBAPc',
@@ -61,6 +61,14 @@ const SCRIPT_PROPERTY_KEYS = Object.freeze({
   setupVersion: 'SETUP_VERSION',
   setupAt: 'SETUP_AT'
 });
+
+// Reuse Apps Script service objects inside one request. Reopening the same
+// spreadsheet and rereading headers for every row is noticeably slow on mobile.
+var runtimeSpreadsheetCache_ = null;
+var runtimeSheetCache_ = {};
+var runtimeHeaderCache_ = {};
+var runtimeSettingsCache_ = null;
+var runtimeWriteLockHeld_ = false;
 
 function getRuntimeConfig_() {
   const properties = PropertiesService.getScriptProperties();
@@ -186,27 +194,35 @@ function sanitizeFilePart_(value) {
 
 // ===== Database.gs =====
 function getSpreadsheet_() {
+  if (runtimeSpreadsheetCache_) return runtimeSpreadsheetCache_;
   const config = getRuntimeConfig_();
   if (!config.spreadsheetId) {
     throw new AppError('NOT_CONFIGURED', 'ยังไม่ได้กำหนด Spreadsheet ID');
   }
-  return SpreadsheetApp.openById(config.spreadsheetId);
+  runtimeSpreadsheetCache_ = SpreadsheetApp.openById(config.spreadsheetId);
+  return runtimeSpreadsheetCache_;
 }
 
 function getSheetOrThrow_(sheetName) {
+  if (runtimeSheetCache_[sheetName]) return runtimeSheetCache_[sheetName];
   const sheet = getSpreadsheet_().getSheetByName(sheetName);
   if (!sheet) {
     throw new AppError('SHEET_NOT_FOUND', 'ไม่พบชีต ' + sheetName, { sheetName: sheetName });
   }
+  runtimeSheetCache_[sheetName] = sheet;
   return sheet;
 }
 
 function readHeaders_(sheet) {
+  const cacheKey = String(sheet.getSheetId());
+  if (runtimeHeaderCache_[cacheKey]) return runtimeHeaderCache_[cacheKey];
   const lastColumn = sheet.getLastColumn();
   if (lastColumn < 1) return [];
-  return sheet.getRange(1, 1, 1, lastColumn).getDisplayValues()[0].map(function (value) {
+  const headers = sheet.getRange(1, 1, 1, lastColumn).getDisplayValues()[0].map(function (value) {
     return String(value || '').trim();
   });
+  runtimeHeaderCache_[cacheKey] = headers;
+  return headers;
 }
 
 function validateHeaders_(actual, expected) {
@@ -240,33 +256,50 @@ function validateDatabaseSchema_() {
 }
 
 function readSettings_() {
+  if (runtimeSettingsCache_) return runtimeSettingsCache_;
   const sheet = getSheetOrThrow_(APP_CONFIG.settingsSheet);
   const lastRow = sheet.getLastRow();
   if (lastRow < 2) return {};
   const rows = sheet.getRange(2, 1, lastRow - 1, 4).getValues();
-  return rows.reduce(function (settings, row) {
+  runtimeSettingsCache_ = rows.reduce(function (settings, row) {
     const key = String(row[0] || '').trim();
     if (key) settings[key] = row[1];
     return settings;
   }, {});
+  return runtimeSettingsCache_;
 }
 
 function appendObjectRow_(sheetName, record) {
+  appendObjectRows_(sheetName, [record]);
+  return record;
+}
+
+function appendObjectRows_(sheetName, records) {
+  if (!records || !records.length) return records || [];
   const sheet = getSheetOrThrow_(sheetName);
   const headers = readHeaders_(sheet);
-  const row = headers.map(function (header) {
-    const value = Object.prototype.hasOwnProperty.call(record, header) ? record[header] : '';
-    if (value && typeof value === 'object' && !(value instanceof Date)) return safeJsonStringify_(value);
-    return value === undefined || value === null ? '' : value;
+  const rows = records.map(function (record) {
+    return headers.map(function (header) {
+      const value = Object.prototype.hasOwnProperty.call(record, header) ? record[header] : '';
+      if (value && typeof value === 'object' && !(value instanceof Date)) return safeJsonStringify_(value);
+      return value === undefined || value === null ? '' : value;
+    });
   });
   const lock = LockService.getScriptLock();
-  lock.waitLock(20000);
-  try {
-    sheet.appendRow(row);
-  } finally {
-    lock.releaseLock();
+  const ownsLock = !runtimeWriteLockHeld_;
+  if (ownsLock) {
+    lock.waitLock(10000);
+    runtimeWriteLockHeld_ = true;
   }
-  return record;
+  try {
+    sheet.getRange(sheet.getLastRow() + 1, 1, rows.length, headers.length).setValues(rows);
+  } finally {
+    if (ownsLock) {
+      runtimeWriteLockHeld_ = false;
+      lock.releaseLock();
+    }
+  }
+  return records;
 }
 
 function readSheetObjects_(sheetName) {
@@ -318,22 +351,44 @@ function replaceDeductions_(saleId, deductions) {
     .sort(function (a, b) { return b.__rowNumber - a.__rowNumber; });
   rows.forEach(function (row) { sheet.deleteRow(row.__rowNumber); });
   const timestamp = nowIso_();
-  (deductions || []).forEach(function (deduction, index) {
-    appendObjectRow_('Deductions', {
+  const records = (deductions || []).map(function (deduction, index) {
+    return {
       DeductionID: createId_('DED'), SaleID: saleId, SortOrder: index + 1,
       DeductionType: deduction.type || 'OTHER', Description: deduction.description || '',
       Quantity: toNumber_(deduction.quantity, 0), Unit: deduction.unit || '', Rate: toNumber_(deduction.rate, 0),
       Amount: toNumber_(deduction.amount, 0), CreatedAt: timestamp, UpdatedAt: timestamp
-    });
+    };
   });
+  appendObjectRows_('Deductions', records);
 }
 
 function getIdempotentSale_(requestId) {
   if (!requestId) return null;
-  const audit = readSheetObjects_('AuditTrail').filter(function (row) {
+  const cache = CacheService.getScriptCache();
+  const cacheKey = 'sale-idem-' + sha256Hex_(requestId).slice(0, 48);
+  const cachedSaleId = cache.get(cacheKey);
+  if (cachedSaleId) {
+    const cached = findObjectById_('Sales', 'SaleID', cachedSaleId);
+    if (cached) return cached;
+  }
+  const audits = readSheetObjects_('AuditTrail').filter(function (row) {
     return row.Action === 'CREATE' && String(row.RequestID || '') === String(requestId);
-  })[0];
-  return audit ? findObjectById_('Sales', 'SaleID', audit.SaleID) : null;
+  });
+  const salesById = {};
+  readSheetObjects_('Sales').forEach(function (row) { salesById[String(row.SaleID)] = row; });
+  for (let index = audits.length - 1; index >= 0; index -= 1) {
+    const sale = salesById[String(audits[index].SaleID)] || null;
+    if (sale) {
+      cache.put(cacheKey, String(sale.SaleID), 21600);
+      return sale;
+    }
+  }
+  return null;
+}
+
+function rememberIdempotentSale_(requestId, saleId) {
+  if (!requestId || !saleId) return;
+  CacheService.getScriptCache().put('sale-idem-' + sha256Hex_(requestId).slice(0, 48), String(saleId), 21600);
 }
 
 // ===== DriveService.gs =====
@@ -497,7 +552,6 @@ function analyzeReceipt_(payload, requestId) {
     const extracted = callGeminiReceipt_(image, model, schemaVersion);
     const normalized = normalizeReceipt_(extracted);
     const validation = validateSaleDraft_(normalized, false);
-    const duplicates = findDuplicateCandidates_(normalized, payload.image && payload.image.sha256);
     appendObjectRow_('OCRRuns', {
       OCRRunID: ocrRunId,
       RequestID: requestId,
@@ -520,25 +574,31 @@ function analyzeReceipt_(payload, requestId) {
       receipt: normalized,
       validation: validation,
       lowConfidenceFields: getLowConfidenceFields_(normalized, Number(settings.LOW_CONFIDENCE_THRESHOLD || 0.75)),
-      duplicateCandidates: duplicates,
+      // Duplicate checking is repeated during save, where it is authoritative.
+      // Skipping the extra full Sales-sheet scan makes OCR return sooner.
+      duplicateCandidates: [],
       durationMs: Date.now() - startedAt
     };
   } catch (error) {
-    appendObjectRow_('OCRRuns', {
-      OCRRunID: ocrRunId,
-      RequestID: requestId,
-      ImageSha256: payload.image && payload.image.sha256 || '',
-      Model: model,
-      SchemaVersion: schemaVersion,
-      Status: 'FAILED',
-      OverallConfidence: 0,
-      MissingFieldsJSON: [],
-      WarningsJSON: [],
-      ExtractedJSON: {},
-      DurationMs: Date.now() - startedAt,
-      ErrorCode: error instanceof AppError ? error.code : 'OCR_FAILED',
-      CreatedAt: nowIso_()
-    });
+    try {
+      appendObjectRow_('OCRRuns', {
+        OCRRunID: ocrRunId,
+        RequestID: requestId,
+        ImageSha256: payload.image && payload.image.sha256 || '',
+        Model: model,
+        SchemaVersion: schemaVersion,
+        Status: 'FAILED',
+        OverallConfidence: 0,
+        MissingFieldsJSON: [],
+        WarningsJSON: [],
+        ExtractedJSON: {},
+        DurationMs: Date.now() - startedAt,
+        ErrorCode: error instanceof AppError ? error.code : 'OCR_FAILED',
+        CreatedAt: nowIso_()
+      });
+    } catch (logError) {
+      console.error('Unable to record failed OCR run', logError && logError.message);
+    }
     if (error instanceof AppError) throw error;
     throw new AppError('OCR_FAILED', 'Gemini อ่านใบชั่งไม่สำเร็จ', { message: error && error.message });
   }
@@ -762,16 +822,44 @@ function createSale_(payload, requestId) {
   if (existing) return { created: false, idempotent: true, sale: stripInternalFields_(existing) };
   const duplicateCandidates = findDuplicateCandidates_(sale, payload.image && payload.image.sha256);
   const blockScore = Number(readSettings_().DUPLICATE_BLOCK_SCORE || 0.9);
-  if (duplicateCandidates.length && duplicateCandidates[0].score >= blockScore && !toBoolean_(payload.duplicateOverride)) {
-    throw new AppError('DUPLICATE_SUSPECTED', 'พบใบชั่งที่คล้ายกับรายการเดิม', { candidates: duplicateCandidates });
+  const saleId = createId_('SALE');
+  let storedImage = null;
+  const saveWarnings = validation.warnings.slice();
+  if (payload.image && payload.image.base64) {
+    try {
+      storedImage = saveReceiptImage_(payload.image, saleId, sale.saleDate, sale.receiptNumber);
+    } catch (imageError) {
+      // The sale data is more important than the receipt image. Keep saving and
+      // make the missing image explicit instead of losing the whole record.
+      saveWarnings.push({ code: 'IMAGE_SAVE_FAILED', field: 'image', message: 'บันทึกข้อมูลแล้ว แต่ยังเก็บรูปลง Drive ไม่สำเร็จ' });
+      console.error('Receipt image save failed', imageError && imageError.message);
+    }
   }
   const lock = LockService.getScriptLock();
-  lock.waitLock(30000);
-  let storedImage = null;
+  try { lock.waitLock(10000); }
+  catch (lockError) {
+    if (storedImage && storedImage.file) { try { storedImage.file.setTrashed(true); } catch (ignore) {} }
+    throw new AppError('RATE_LIMITED', 'ระบบกำลังบันทึกรายการอื่นอยู่ รายการนี้จะลองใหม่อัตโนมัติ');
+  }
+  runtimeWriteLockHeld_ = true;
+  let committed = false;
   try {
-    const saleId = createId_('SALE');
-    const buyerId = ensureBuyer_(sale);
-    storedImage = saveReceiptImage_(payload.image, saleId, sale.saleDate, sale.receiptNumber);
+    // Recheck after taking the lock: another request may have completed while
+    // this request was uploading the image.
+    const raced = getIdempotentSale_(idempotencyKey);
+    if (raced) {
+      if (storedImage && storedImage.file) { try { storedImage.file.setTrashed(true); } catch (ignore) {} }
+      return { created: false, idempotent: true, sale: stripInternalFields_(raced) };
+    }
+    if (duplicateCandidates.length && duplicateCandidates[0].score >= blockScore && !toBoolean_(payload.duplicateOverride)) {
+      throw new AppError('DUPLICATE_SUSPECTED', 'พบใบชั่งที่คล้ายกับรายการเดิม', { candidates: duplicateCandidates });
+    }
+    let buyerId = '';
+    try { buyerId = ensureBuyer_(sale); }
+    catch (buyerError) {
+      saveWarnings.push({ code: 'BUYER_LINK_FAILED', field: 'buyerName', message: 'บันทึกรายการแล้ว แต่ยังเชื่อมประวัติลานรับซื้อไม่สำเร็จ' });
+      console.error('Buyer link failed', buyerError && buyerError.message);
+    }
     const timestamp = nowIso_();
     const topDuplicate = duplicateCandidates[0] || null;
     const record = {
@@ -784,36 +872,57 @@ function createSale_(payload, requestId) {
       PricePerKg: sale.pricePerKg, GrossAmount: sale.grossAmount, TotalDeduction: sale.totalDeduction || 0,
       NetAmount: sale.netAmount, Currency: 'THB', Notes: sale.notes || '', HandwrittenNotes: sale.handwrittenNotes || '',
       ImageFileID: storedImage ? storedImage.id : '', ImageName: storedImage ? storedImage.name : '',
-      ImageSha256: storedImage ? storedImage.sha256 : '', ImageMimeType: storedImage ? storedImage.mimeType : '',
-      ImageBytes: storedImage ? storedImage.bytes : 0, OCRRunID: payload.ocrRunId || '',
+      ImageSha256: storedImage ? storedImage.sha256 : (payload.image && payload.image.sha256 || ''),
+      ImageMimeType: storedImage ? storedImage.mimeType : (payload.image && payload.image.mimeType || ''),
+      ImageBytes: storedImage ? storedImage.bytes : (payload.image && payload.image.bytes || 0), OCRRunID: payload.ocrRunId || '',
       OCRStatus: payload.ocrRunId ? 'REVIEWED' : 'MANUAL', ConfidenceOverall: sale.overallConfidence || 0,
       AIModel: payload.model || readSettings_().GEMINI_MODEL || '', Source: payload.source || 'MANUAL',
       DuplicateScore: topDuplicate ? topDuplicate.score : 0, DuplicateOfSaleID: topDuplicate ? topDuplicate.saleId : '',
       DuplicateOverride: toBoolean_(payload.duplicateOverride), CreatedAt: timestamp, UpdatedAt: timestamp
     };
+    // Write the idempotency marker immediately before the sale. If the client
+    // connection drops after the sale write, sales.status can still prove that
+    // the record was saved and prevent a duplicate retry.
+    appendAudit_(saleId, 'CREATE', { sale: record, warnings: saveWarnings }, idempotencyKey);
     appendObjectRow_('Sales', record);
-    (sale.deductions || []).forEach(function (deduction, index) {
-      appendObjectRow_('Deductions', {
+    rememberIdempotentSale_(idempotencyKey, saleId);
+    committed = true;
+    const deductionRecords = (sale.deductions || []).map(function (deduction, index) {
+      return {
         DeductionID: createId_('DED'), SaleID: saleId, SortOrder: index + 1,
         DeductionType: deduction.type || 'OTHER', Description: deduction.description || '',
         Quantity: toNumber_(deduction.quantity, 0), Unit: deduction.unit || '', Rate: toNumber_(deduction.rate, 0),
         Amount: toNumber_(deduction.amount, 0), CreatedAt: timestamp, UpdatedAt: timestamp
-      });
+      };
     });
-    appendAudit_(saleId, 'CREATE', { sale: record, warnings: validation.warnings }, idempotencyKey);
-    return { created: true, sale: enrichSale_(record), warnings: validation.warnings, duplicateCandidates: duplicateCandidates };
+    try { appendObjectRows_('Deductions', deductionRecords); }
+    catch (deductionError) {
+      saveWarnings.push({ code: 'DEDUCTIONS_SAVE_FAILED', field: 'deductions', message: 'บันทึกรายการหลักแล้ว แต่รายการหักบางส่วนยังไม่สำเร็จ' });
+      console.error('Deductions save failed', deductionError && deductionError.message);
+    }
+    const deductionMap = {};
+    deductionMap[saleId] = deductionRecords;
+    return { created: true, sale: enrichSale_(record, deductionMap), warnings: saveWarnings, duplicateCandidates: duplicateCandidates };
   } catch (error) {
-    if (storedImage && storedImage.file) { try { storedImage.file.setTrashed(true); } catch (ignore) {} }
+    if (!committed && storedImage && storedImage.file) { try { storedImage.file.setTrashed(true); } catch (ignore) {} }
     throw error;
   } finally {
+    runtimeWriteLockHeld_ = false;
     lock.releaseLock();
   }
+}
+
+function getSaleSaveStatus_(idempotencyKey) {
+  const key = String(idempotencyKey || '').trim();
+  if (!key) throw new AppError('INVALID_REQUEST', 'ไม่พบรหัสติดตามการบันทึก');
+  const sale = getIdempotentSale_(key);
+  return sale ? { state: 'SAVED', saved: true, sale: stripInternalFields_(sale) } : { state: 'PENDING', saved: false };
 }
 
 function listSales_(filters) {
   const input = filters || {};
   const limit = Math.min(200, Math.max(1, Number(input.limit || 50)));
-  return readSheetObjects_('Sales').filter(function (row) {
+  const selected = readSheetObjects_('Sales').filter(function (row) {
     if (!toBoolean_(input.includeVoid) && row.RecordStatus === 'VOID') return false;
     const date = dateKey_(row.SaleDate);
     if (input.fromDate && date < input.fromDate) return false;
@@ -824,7 +933,16 @@ function listSales_(filters) {
     if (input.buyerName && normalizeName_(row.BuyerNameRaw).indexOf(normalizeName_(input.buyerName)) < 0) return false;
     return true;
   }).sort(function (a, b) { return String(b.SaleDate || '').localeCompare(String(a.SaleDate || '')); })
-    .slice(0, limit).map(enrichSale_);
+    .slice(0, limit);
+  const selectedIds = {};
+  selected.forEach(function (row) { selectedIds[row.SaleID] = true; });
+  const deductionMap = {};
+  readSheetObjects_('Deductions').forEach(function (item) {
+    if (!selectedIds[item.SaleID]) return;
+    if (!deductionMap[item.SaleID]) deductionMap[item.SaleID] = [];
+    deductionMap[item.SaleID].push(item);
+  });
+  return selected.map(function (row) { return enrichSale_(row, deductionMap); });
 }
 
 function getSale_(saleId) {
@@ -833,10 +951,11 @@ function getSale_(saleId) {
   return enrichSale_(row);
 }
 
-function enrichSale_(row) {
+function enrichSale_(row, deductionMap) {
   const output = stripInternalFields_(row);
   output.SaleDate = dateKey_(output.SaleDate);
-  output.deductions = readSheetObjects_('Deductions').filter(function (item) { return item.SaleID === output.SaleID; })
+  const source = deductionMap ? (deductionMap[output.SaleID] || []) : readSheetObjects_('Deductions').filter(function (item) { return item.SaleID === output.SaleID; });
+  output.deductions = source
     .sort(function (a, b) { return Number(a.SortOrder) - Number(b.SortOrder); }).map(stripInternalFields_);
   output.imageUrl = output.ImageFileID ? 'https://drive.google.com/file/d/' + output.ImageFileID + '/view' : '';
   return output;
@@ -967,6 +1086,7 @@ function routeRequest_(method, action, payload, requestId) {
     return apiSuccess_(findDuplicateCandidates_(normalizeReceipt_(payload.sale || {}), payload.imageSha256 || ''), requestId);
   }
   if (normalized === 'sales.create' && method === 'POST') return apiSuccess_(createSale_(payload, requestId), requestId);
+  if (normalized === 'sales.status') return apiSuccess_(getSaleSaveStatus_(payload.idempotencyKey), requestId);
   if (normalized === 'sales.update' && method === 'POST') return apiSuccess_(updateSale_(payload, requestId), requestId);
   if (normalized === 'sales.void' && method === 'POST') return apiSuccess_(voidSale_(payload, requestId), requestId);
   if (normalized === 'sales.list') return apiSuccess_(listSales_(payload), requestId);
