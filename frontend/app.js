@@ -66,6 +66,7 @@ function bindFilters() {
   $('#filter-month').addEventListener('change', loadHistory);
   let timer;
   $('#filter-search').addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(loadHistory, 300); });
+  $('#clear-filters').addEventListener('click', () => { $('#filter-month').value = ''; $('#filter-search').value = ''; loadHistory(); });
   $('#dashboard-year').addEventListener('change', loadDashboard);
 }
 
@@ -241,7 +242,17 @@ async function loadDashboard() {
   if (!ensureConnected(false)) return;
   setLoading(true, 'กำลังสรุปข้อมูล…');
   try {
-    const data = await api('dashboard.summary', { year: $('#dashboard-year').value || new Date().getFullYear() });
+    const selectedYear = $('#dashboard-year').value || 'all';
+    let data = await api('dashboard.summary', { year: selectedYear });
+    // Older backend versions do not understand the special `all` scope.
+    if (selectedYear === 'all' && data.allYears === undefined) {
+      data = await api('dashboard.summary', { year: new Date().getFullYear() });
+      data.availableYears = data.availableYears || [];
+    }
+    updateDashboardYears(data.availableYears || [], data.year || selectedYear);
+    const allYears = Boolean(data.allYears || data.year === 'all');
+    $('#sum-weight-label').textContent = allYears ? 'ผลผลิตทั้งหมด' : `ผลผลิตปี ${Number(data.year) + 543}`;
+    $('#sum-revenue-label').textContent = allYears ? 'รายได้ทั้งหมด' : `รายได้ปี ${Number(data.year) + 543}`;
     $('#sum-weight').textContent = formatNumber(data.totalWeightTon, 2); $('#sum-revenue').textContent = formatMoney(data.totalRevenue);
     $('#sum-price').textContent = formatNumber(data.averagePricePerKg, 2); $('#sum-count').textContent = formatNumber(data.saleCount, 0);
     renderMonthlyChart(data.monthlySeries || []); renderBuyers(data.buyerComparison || []);
@@ -271,8 +282,9 @@ async function loadHistory() {
     const items = await api('sales.list', filters);
     const filtered = items.filter(item => !query || `${item.ReceiptNumber || ''} ${item.BuyerNameRaw || ''}`.toLowerCase().includes(query.toLowerCase()));
     const pending = await queueGetAll().catch(() => []);
+    $('#history-count').textContent = (monthValue || query) ? `แสดง ${filtered.length} รายการตามตัวกรอง` : `พบ ${filtered.length} รายการใน Google Sheets`;
     renderHistory(filtered, pending);
-  } catch (error) { handleError(error); } finally { setLoading(false); }
+  } catch (error) { $('#history-count').textContent = 'โหลดรายการไม่สำเร็จ'; handleError(error); } finally { setLoading(false); }
 }
 
 function renderHistory(items, pending = []) {
@@ -494,6 +506,7 @@ async function imagePayload(dataUrl){const [header,base64]=dataUrl.split(',');co
 function getIdempotencyKey(){let key=localStorage.getItem('palmIdempotencyKey');if(!key){key=crypto.randomUUID?crypto.randomUUID():`${Date.now()}-${Math.random()}`;localStorage.setItem('palmIdempotencyKey',key);}return key;}
 function saveDraft(){if(!$('#review-panel').classList.contains('hidden'))localStorage.setItem('palmDraft',JSON.stringify({receipt:collectReceipt(),source:state.source,ocrRunId:state.ocrRunId,model:state.model,savedAt:Date.now()}));}
 function restoreDraft(){try{const draft=JSON.parse(localStorage.getItem('palmDraft'));if(draft?.receipt){state.source=draft.source||'MANUAL';state.ocrRunId=draft.ocrRunId||'';state.model=draft.model||'';openReview(draft.receipt,[],{warnings:[{message:'กู้คืนแบบร่างที่ยังไม่ได้บันทึก'}]},false);}}catch(error){localStorage.removeItem('palmDraft');}}
-function populateYears(){const current=new Date().getFullYear();$('#dashboard-year').innerHTML=Array.from({length:6},(_,i)=>`<option value="${current-i}">${current-i+543}</option>`).join('');}
+function populateYears(){const current=new Date().getFullYear();$('#dashboard-year').innerHTML=`<option value="all">ทุกปี</option>${Array.from({length:6},(_,i)=>`<option value="${current-i}">${current-i+543}</option>`).join('')}`;$('#dashboard-year').value='all';}
+function updateDashboardYears(years,selected){const current=new Date().getFullYear();const source=years.length?years:Array.from({length:6},(_,i)=>current-i);const values=Array.from(new Set(source.map(String))).sort().reverse();const select=$('#dashboard-year');select.innerHTML=`<option value="all">ทุกปี</option>${values.map(year=>`<option value="${escapeHtml(year)}">${Number(year)+543}</option>`).join('')}`;select.value=values.includes(String(selected))?String(selected):'all';}
 function setupInstall(){window.addEventListener('beforeinstallprompt',event=>{event.preventDefault();state.installPrompt=event;$('#install-button').classList.remove('hidden');});$('#install-button').addEventListener('click',async()=>{if(!state.installPrompt)return;state.installPrompt.prompt();await state.installPrompt.userChoice;state.installPrompt=null;$('#install-button').classList.add('hidden');});}
 function delay(ms){return new Promise(resolve=>setTimeout(resolve,ms));}

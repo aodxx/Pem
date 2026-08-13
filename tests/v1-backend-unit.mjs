@@ -65,6 +65,16 @@ const summary = context.summarizeSales_([
 ]);
 if (summary.totalWeightKg !== 1500 || summary.totalRevenue !== 12500 || summary.saleCount !== 2) throw new Error('Dashboard summary failed');
 
+context.readSheetObjects_ = sheet => sheet === 'Sales' ? [
+  { SaleID: 'SALE_2026', RecordStatus: 'ACTIVE', SaleDate: '2026-08-09', PayableWeightKg: 335, PricePerKg: 8.2, NetAmount: 2747, BuyerNameRaw: 'ลานหนึ่ง' },
+  { SaleID: 'SALE_2020', RecordStatus: 'ACTIVE', SaleDate: '2020-08-05', PayableWeightKg: 775, PricePerKg: 8.4, NetAmount: 6510, BuyerNameRaw: 'ลานสอง' }
+] : [];
+const allYearsSummary = context.getDashboardSummary_({ year: 'all' });
+if (!allYearsSummary.allYears || allYearsSummary.saleCount !== 2 || !allYearsSummary.availableYears.includes('2020')) throw new Error('All-years dashboard failed');
+
+const dateOutlier = context.validateSaleDraft_({ ...normalized, saleDate: '2020-08-05' }, true);
+if (!dateOutlier.warnings.some(item => item.code === 'DATE_OUTLIER')) throw new Error('Outlier date warning failed');
+
 const schema = context.getGeminiReceiptJsonSchema_();
 if (!schema.required.includes('netWeightKg') || !schema.properties.deductions) throw new Error('Gemini schema incomplete');
 

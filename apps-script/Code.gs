@@ -1,5 +1,5 @@
 /**
- * Palm Yield Ledger Backend v1.1.0
+ * Palm Yield Ledger Backend v1.2.0
  * Apps Script Project: 1PzG5lE7bxpSMSyO_BOBx9DGuFTZMTw_7mBV7o12c6HoWMKqzLlmwaGaz
  * รวมจากไฟล์ Phase 1 ใน aodxx/Pem เพื่อให้คัดลอกวางใน Code.gs ได้ครั้งเดียว
  */
@@ -8,7 +8,7 @@
 const APP_CONFIG = Object.freeze({
   appName: 'Palm Yield Ledger',
   serviceName: 'palm-yield-ledger-api',
-  version: '1.1.0',
+  version: '1.2.0',
   apiVersion: 'v1',
   timeZone: 'Asia/Bangkok',
   spreadsheetId: '1S5WtdhsVUOQ5APZ_EiBKSZBTeyi6VKnVLeaGbWPBAPc',
@@ -567,13 +567,17 @@ function analyzeReceipt_(payload, requestId) {
       ErrorCode: '',
       CreatedAt: nowIso_()
     });
+    const lowConfidenceFields = getLowConfidenceFields_(normalized, Number(settings.LOW_CONFIDENCE_THRESHOLD || 0.75));
+    if (validation.warnings.some(function (item) { return item.code === 'DATE_OUTLIER'; }) && lowConfidenceFields.indexOf('saleDate') < 0) {
+      lowConfidenceFields.push('saleDate');
+    }
     return {
       ocrRunId: ocrRunId,
       model: model,
       schemaVersion: schemaVersion,
       receipt: normalized,
       validation: validation,
-      lowConfidenceFields: getLowConfidenceFields_(normalized, Number(settings.LOW_CONFIDENCE_THRESHOLD || 0.75)),
+      lowConfidenceFields: lowConfidenceFields,
       // Duplicate checking is repeated during save, where it is authoritative.
       // Skipping the extra full Sales-sheet scan makes OCR return sooner.
       duplicateCandidates: [],
@@ -613,7 +617,9 @@ function callGeminiReceipt_(image, model, schemaVersion) {
     'คุณคือระบบอ่านใบชั่งขายผลปาล์มน้ำมันของประเทศไทย',
     'อ่านข้อความพิมพ์ ลายมือ และตัวเลขจากภาพอย่างระมัดระวัง',
     'ห้ามเดาตัวเลข หากอ่านไม่ได้ให้คืน null และเพิ่มชื่อ field ใน missingFields',
+    'วันที่ปัจจุบันคือ ' + Utilities.formatDate(new Date(), APP_CONFIG.timeZone, 'yyyy-MM-dd'),
     'วันที่ใช้ ค.ศ. รูปแบบ YYYY-MM-DD; หากบนเอกสารเป็น พ.ศ. ให้ลบ 543',
+    'ถ้าตัวเลขปีเบลอหรืออ่านไม่ชัด ห้ามเดาปี ให้คืน saleDate เป็น null และระบุ saleDate ใน missingFields',
     'น้ำหนักเป็นกิโลกรัม เงินเป็นบาท และตัวเลขต้องไม่มี comma',
     'grossWeightKg คือ น้ำหนักเข้า/น้ำหนักรวม, tareWeightKg คือ น้ำหนักออก/น้ำหนักรถเปล่า',
     'netWeightKg ควรเท่ากับ grossWeightKg - tareWeightKg เมื่อเอกสารรองรับ',
@@ -742,6 +748,13 @@ function validateSaleDraft_(sale, strict) {
   if (strict && !sale.saleDate) error('REQUIRED', 'saleDate', 'กรุณาระบุวันที่ขาย');
   if (strict && !(sale.netWeightKg > 0 || sale.payableWeightKg > 0)) error('INVALID_WEIGHT', 'netWeightKg', 'น้ำหนักสุทธิต้องมากกว่า 0');
   if (strict && !(sale.pricePerKg > 0)) error('INVALID_AMOUNT', 'pricePerKg', 'ราคาต่อกิโลกรัมต้องมากกว่า 0');
+  if (sale.saleDate) {
+    const saleYear = Number(String(sale.saleDate).slice(0, 4));
+    const currentYear = Number(Utilities.formatDate(new Date(), APP_CONFIG.timeZone, 'yyyy'));
+    if (saleYear && Math.abs(currentYear - saleYear) > 3) {
+      warn('DATE_OUTLIER', 'saleDate', 'วันที่ขายเป็นปี ' + saleYear + ' ซึ่งห่างจากปีปัจจุบัน กรุณาตรวจสอบปีบนใบชั่ง');
+    }
+  }
   if (sale.grossWeightKg !== null && sale.tareWeightKg !== null) {
     if (sale.grossWeightKg <= sale.tareWeightKg) error('INVALID_WEIGHT', 'grossWeightKg', 'น้ำหนักเข้าต้องมากกว่าน้ำหนักออก');
     if (sale.netWeightKg !== null && Math.abs((sale.grossWeightKg - sale.tareWeightKg) - sale.netWeightKg) > weightTolerance) {
@@ -998,14 +1011,18 @@ function voidSale_(payload, requestId) {
 // ===== DashboardService.gs =====
 function getDashboardSummary_(filters) {
   const input = filters || {};
-  const year = String(input.year || Utilities.formatDate(new Date(), APP_CONFIG.timeZone, 'yyyy'));
+  const requestedYear = String(input.year || 'all').toLowerCase();
+  const allYears = requestedYear === 'all' || toBoolean_(input.allYears);
+  const year = allYears ? 'all' : requestedYear;
   const month = input.month ? ('0' + input.month).slice(-2) : '';
   const all = readSheetObjects_('Sales').filter(function (row) { return row.RecordStatus !== 'VOID'; });
+  const availableYears = Array.from(new Set(all.map(function (row) { return dateKey_(row.SaleDate).slice(0, 4); })
+    .filter(function (value) { return /^\d{4}$/.test(value); }))).sort().reverse();
   const selected = all.filter(function (row) {
     const date = dateKey_(row.SaleDate);
     if (input.fromDate && date < input.fromDate) return false;
     if (input.toDate && date > input.toDate) return false;
-    if (!input.fromDate && date.slice(0, 4) !== year) return false;
+    if (!allYears && !input.fromDate && date.slice(0, 4) !== year) return false;
     if (month && date.slice(5, 7) !== month) return false;
     return true;
   });
@@ -1013,7 +1030,10 @@ function getDashboardSummary_(filters) {
   const monthlySeries = [];
   for (let index = 1; index <= 12; index += 1) {
     const key = ('0' + index).slice(-2);
-    const summary = summarizeSales_(all.filter(function (row) { return dateKey_(row.SaleDate).slice(0, 7) === year + '-' + key; }));
+    const summary = summarizeSales_(all.filter(function (row) {
+      const date = dateKey_(row.SaleDate);
+      return allYears ? date.slice(5, 7) === key : date.slice(0, 7) === year + '-' + key;
+    }));
     monthlySeries.push({ month: key, weightKg: summary.totalWeightKg, revenue: summary.totalRevenue,
       averagePricePerKg: summary.averagePricePerKg, saleCount: summary.saleCount });
   }
@@ -1028,7 +1048,8 @@ function getDashboardSummary_(filters) {
     return { buyerName: name, totalWeightKg: summary.totalWeightKg, totalRevenue: summary.totalRevenue,
       averagePricePerKg: summary.averagePricePerKg, saleCount: summary.saleCount };
   }).sort(function (a, b) { return b.totalRevenue - a.totalRevenue; });
-  return Object.assign({ year: year, month: month || null, monthlySeries: monthlySeries, buyerComparison: buyerComparison }, totals);
+  return Object.assign({ year: year, allYears: allYears, availableYears: availableYears,
+    month: month || null, monthlySeries: monthlySeries, buyerComparison: buyerComparison }, totals);
 }
 
 function summarizeSales_(rows) {
