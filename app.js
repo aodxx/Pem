@@ -6,7 +6,8 @@ const $$ = selector => Array.from(document.querySelectorAll(selector));
 const state = {
   accessToken: localStorage.getItem('palmAccessToken') || '', originalDataUrl: '', previewDataUrl: '', rotation: 0,
   source: 'MANUAL', receipt: null, ocrRunId: '', model: '', editingSaleId: '', expectedUpdatedAt: '', installPrompt: null,
-  syncInProgress: false, viewingSaleId: '', contractors: [], pendingContractorRow: null
+  syncInProgress: false, viewingSaleId: '', viewingSaleDetail: null, contractors: [], pendingContractorRow: null,
+  editingContractorId: '', contractorsLoaded: false
 };
 
 const QUEUE_DB = 'palm-ledger-offline-v1';
@@ -20,10 +21,11 @@ function init() {
   $('#access-token').value = state.accessToken;
   $('#app-version').textContent = CONFIG.version;
   bindNavigation(); bindCapture(); bindForm(); bindLabor(); bindSettings(); bindFilters(); setupInstall();
-  bindReceiptViewer();
+  bindReceiptViewer(); bindSaleDetail();
   populateYears(); updateConnectionUI(); restoreDraft();
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js').catch(() => {});
   initSaveQueue().then(async () => { await refreshQueueUI(); processPendingSaves(false); }).catch(() => {});
+  if (state.accessToken) loadContractors().catch(() => {});
   window.addEventListener('online', () => { setSyncStatus('ออนไลน์ — กำลังตรวจรายการรอส่ง'); processPendingSaves(false); });
   window.addEventListener('offline', () => setSyncStatus('ออฟไลน์ — แบบร่างยังอยู่'));
 }
@@ -60,11 +62,13 @@ function bindForm() {
 
 function bindLabor() {
   $('#set-self-managed').addEventListener('click', () => setSelfManaged());
-  $('#add-team-labor').addEventListener('click', () => addLaborEntry('TEAM'));
-  $('#add-individual-labor').addEventListener('click', () => addLaborEntry('INDIVIDUAL'));
+  $('#add-team-labor').addEventListener('click', () => addLaborEntryAfterContractors('TEAM'));
+  $('#add-individual-labor').addEventListener('click', () => addLaborEntryAfterContractors('INDIVIDUAL'));
   $('#labor-entries-list').addEventListener('input', event => {
     const row = event.target.closest('.labor-entry-row');
-    if (row) { updateLaborRow(row); calculateLaborTotals(); saveDraft(); }
+    if (!row) return;
+    if (event.target.classList.contains('labor-contractor-search')) filterContractorSelect(row, event.target.value);
+    updateLaborRow(row); calculateLaborTotals(); saveDraft();
   });
   $('#labor-entries-list').addEventListener('change', event => {
     const row = event.target.closest('.labor-entry-row');
@@ -82,6 +86,12 @@ function bindLabor() {
       row.remove(); calculateLaborTotals(); saveDraft();
     }
     if (event.target.closest('.add-contractor-inline')) openContractorDialog(row.dataset.workMode, row);
+    if (event.target.closest('.edit-contractor-inline')) {
+      const contractorId = row.querySelector('.labor-contractor-select')?.value;
+      const contractor = state.contractors.find(item => String(item.ContractorID) === String(contractorId));
+      if (contractor) openContractorDialog(row.dataset.workMode, row, contractor);
+      else toast('กรุณาเลือกชื่อที่ต้องการแก้ไขก่อน');
+    }
   });
   $('#close-contractor-dialog').addEventListener('click', closeContractorDialog);
   $('#cancel-contractor').addEventListener('click', closeContractorDialog);
@@ -100,6 +110,17 @@ function prepareLaborUI(entries = []) {
 function setSelfManaged() {
   $('#labor-entries-list').innerHTML = '';
   addLaborEntry('SELF');
+}
+
+async function addLaborEntryAfterContractors(mode) {
+  if (!ensureConnected()) return;
+  if (!state.contractorsLoaded) {
+    setLoading(true, 'กำลังโหลดรายชื่อทีม…');
+    try { await loadContractors(); }
+    catch (error) { handleError(error); }
+    finally { setLoading(false); }
+  }
+  addLaborEntry(mode);
 }
 
 function addLaborEntry(mode, item = {}, persist = true) {
@@ -121,13 +142,18 @@ function addLaborEntry(mode, item = {}, persist = true) {
     const contractorId = item.ContractorID || item.contractorId || '';
     const contractorName = item.ContractorNameSnapshot || item.contractorName || '';
     row.innerHTML = `<div class="labor-entry-heading"><div><strong>จ้าง${typeLabel}</strong><small>${normalizedMode === 'TEAM' ? 'คำนวณจากน้ำหนักสุทธิ' : 'คำนวณจากจำนวนคน'}</small></div><button class="remove-labor-entry" type="button" aria-label="ลบ">×</button></div>
-      <div class="contractor-picker"><label>เลือก${typeLabel}ที่เคยใช้<select class="labor-contractor-select">${renderContractorOptions(normalizedMode, contractorId, contractorName)}</select></label><button class="add-contractor-inline" type="button">＋ เพิ่มชื่อใหม่</button></div>
+      <div class="contractor-picker">
+        <label class="contractor-search-label">ค้นหาชื่อ<input class="labor-contractor-search" type="search" placeholder="พิมพ์ชื่อทีม/บุคคล"></label>
+        <label>เลือก${typeLabel}ที่เคยใช้<select class="labor-contractor-select">${renderContractorOptions(normalizedMode, contractorId, contractorName)}</select></label>
+        <div class="contractor-inline-actions"><button class="add-contractor-inline" type="button">＋ เพิ่มชื่อ</button><button class="edit-contractor-inline" type="button">แก้ไขข้อมูลประจำ</button></div>
+      </div>
       <div class="labor-rate-grid">
         <label>วิธีคิด<select class="labor-method"><option value="PER_KG">ตามน้ำหนัก</option><option value="PER_PERSON">ตามจำนวนคน</option></select></label>
         <label>อัตราค่าแรง<input class="labor-rate" type="number" min="0" step="0.01" inputmode="decimal" value="${escapeHtml(rate)}"></label>
         <label class="labor-weight-wrap">น้ำหนักสุทธิ<input class="labor-weight" type="number" readonly></label>
         <label class="labor-headcount-wrap">จำนวนคน<input class="labor-headcount" type="number" min="1" step="1" inputmode="numeric" value="${escapeHtml(headcount)}"></label>
       </div>
+      <label class="checkbox-label rate-default-choice hidden"><input class="labor-save-default" type="checkbox"> ใช้อัตรานี้เป็นราคาเริ่มต้นใหม่ด้วย</label>
       <label>หมายเหตุ<input class="labor-notes" value="${escapeHtml(item.Notes || item.notes || '')}" placeholder="ไม่บังคับ"></label>
       <div class="labor-row-total"><span>ค่าแรงรายการนี้</span><strong class="labor-cost">฿0</strong></div>`;
     row.querySelector('.labor-method').value = method;
@@ -135,15 +161,17 @@ function addLaborEntry(mode, item = {}, persist = true) {
   $('#labor-entries-list').appendChild(row);
   updateLaborRow(row); calculateLaborTotals();
   if (persist) saveDraft();
-  if (normalizedMode !== 'SELF' && !state.contractors.some(contractor => contractor.ContractorType === normalizedMode)) {
+  if (normalizedMode !== 'SELF' && state.contractorsLoaded && !state.contractors.some(contractor => contractor.ContractorType === normalizedMode)) {
     openContractorDialog(normalizedMode, row);
   }
   return row;
 }
 
-function renderContractorOptions(mode, selectedId = '', snapshotName = '') {
-  const items = state.contractors.filter(item => String(item.ContractorType).toUpperCase() === mode);
+function renderContractorOptions(mode, selectedId = '', snapshotName = '', query = '') {
+  const needle = normalizeSearch(query);
+  const items = state.contractors.filter(item => String(item.ContractorType).toUpperCase() === mode && (!needle || normalizeSearch(item.Name).includes(needle)));
   let html = '<option value="">— เลือกชื่อ —</option>';
+  if (mode === 'INDIVIDUAL') html += '<option value="__unnamed__">ไม่ระบุชื่อ • กรอกจำนวนคนอย่างเดียว</option>';
   if (selectedId && !items.some(item => String(item.ContractorID) === String(selectedId))) {
     html += `<option value="${escapeHtml(selectedId)}" selected>${escapeHtml(snapshotName || 'ข้อมูลเดิม')}</option>`;
   }
@@ -151,25 +179,51 @@ function renderContractorOptions(mode, selectedId = '', snapshotName = '') {
   return html + '<option value="__new__">＋ เพิ่มชื่อใหม่</option>';
 }
 
+function filterContractorSelect(row, query) {
+  const select = row.querySelector('.labor-contractor-select');
+  const selected = select.value;
+  const contractor = state.contractors.find(item => String(item.ContractorID) === String(selected));
+  select.innerHTML = renderContractorOptions(row.dataset.workMode, selected, contractor?.Name || '', query);
+  if (selected && [...select.options].some(option => option.value === selected)) select.value = selected;
+}
+
 async function loadContractors() {
   if (!state.accessToken) return [];
   const items = await api('contractors.list', {}, true, { timeoutMs: 20000 });
   state.contractors = Array.isArray(items) ? items : [];
+  state.contractorsLoaded = true;
   $$('.labor-contractor-select').forEach(select => {
     const selected = select.value;
     const row = select.closest('.labor-entry-row');
     select.innerHTML = renderContractorOptions(row.dataset.workMode, selected, 'ข้อมูลเดิม');
     if (selected) select.value = selected;
+    rememberContractorDefaults(row, selected);
+    updateLaborRow(row);
   });
+  refreshContractorFilter();
   return state.contractors;
+}
+
+function rememberContractorDefaults(row, contractorId) {
+  const contractor = state.contractors.find(item => String(item.ContractorID) === String(contractorId));
+  if (!contractor) return;
+  row.dataset.defaultMethod = contractor.CalculationMethod || '';
+  row.dataset.defaultRate = String(numberOrNull(contractor.DefaultRate) || 0);
+  row.dataset.defaultHeadcount = String(numberOrNull(contractor.DefaultHeadcount) || 0);
 }
 
 function applyContractorToRow(row, contractorId) {
   const contractor = state.contractors.find(item => String(item.ContractorID) === String(contractorId));
   if (!contractor) return;
-  row.querySelector('.labor-method').value = contractor.CalculationMethod || (row.dataset.workMode === 'TEAM' ? 'PER_KG' : 'PER_PERSON');
+  const method = contractor.CalculationMethod || (row.dataset.workMode === 'TEAM' ? 'PER_KG' : 'PER_PERSON');
+  row.querySelector('.labor-method').value = method;
   row.querySelector('.labor-rate').value = valueForInput(contractor.DefaultRate);
   if (row.querySelector('.labor-headcount') && contractor.DefaultHeadcount) row.querySelector('.labor-headcount').value = contractor.DefaultHeadcount;
+  row.dataset.defaultMethod = method;
+  row.dataset.defaultRate = String(numberOrNull(contractor.DefaultRate) || 0);
+  row.dataset.defaultHeadcount = String(numberOrNull(contractor.DefaultHeadcount) || 0);
+  const choice = row.querySelector('.labor-save-default');
+  if (choice) choice.checked = false;
 }
 
 function updateLaborRow(row) {
@@ -186,6 +240,17 @@ function updateLaborRow(row) {
   const cost = method === 'PER_KG' ? round2(weight * rate) : round2(headcount * rate);
   row.dataset.laborCost = String(cost);
   row.querySelector('.labor-cost').textContent = formatMoney(cost);
+  const defaultChoice = row.querySelector('.rate-default-choice');
+  if (defaultChoice) {
+    const selectedId = row.querySelector('.labor-contractor-select').value;
+    const changed = Boolean(selectedId && selectedId !== '__new__') && (
+      method !== (row.dataset.defaultMethod || method) ||
+      Math.abs(rate - Number(row.dataset.defaultRate || rate)) > .0001 ||
+      (method === 'PER_PERSON' && headcount !== Number(row.dataset.defaultHeadcount || headcount))
+    );
+    defaultChoice.classList.toggle('hidden', !changed);
+    if (!changed) row.querySelector('.labor-save-default').checked = false;
+  }
 }
 
 function calculateLaborTotals() {
@@ -214,23 +279,43 @@ function collectLaborEntries(allowEmpty = false, allowIncomplete = false) {
     const weightKgSnapshot = numberOrNull(row.querySelector('.labor-weight').value) || 0;
     if ((rateSnapshot === null || rateSnapshot < 0) && !allowIncomplete) throw appError('INVALID_RATE', 'กรุณาระบุอัตราค่าแรงให้ถูกต้อง');
     if (calculationMethod === 'PER_PERSON' && headcount < 1 && !allowIncomplete) throw appError('INVALID_HEADCOUNT', 'กรุณาระบุจำนวนคน');
-    return { laborEntryId: row.dataset.entryId || '', workMode, contractorId: contractorId === '__new__' ? '' : contractorId, calculationMethod,
+    return { laborEntryId: row.dataset.entryId || '', workMode, contractorId: ['__new__','__unnamed__'].includes(contractorId) ? '' : contractorId,
+      contractorName: contractorId === '__unnamed__' ? 'แรงงานบุคคล' : '', calculationMethod,
       weightKgSnapshot, headcount, rateSnapshot, notes: row.querySelector('.labor-notes').value.trim() };
   });
 }
 
-function openContractorDialog(mode, row) {
+function collectContractorUpdates() {
+  return $$('#labor-entries-list .labor-entry-row').flatMap(row => {
+    const checkbox = row.querySelector('.labor-save-default');
+    const contractorId = row.querySelector('.labor-contractor-select')?.value;
+    if (!checkbox?.checked || !contractorId || ['__new__','__unnamed__'].includes(contractorId)) return [];
+    return [{ contractorId, calculationMethod: row.querySelector('.labor-method').value,
+      defaultRate: numberOrNull(row.querySelector('.labor-rate').value) || 0,
+      defaultHeadcount: numberOrNull(row.querySelector('.labor-headcount').value) || 0 }];
+  });
+}
+
+async function applyContractorUpdates(updates = []) {
+  for (const contractor of updates) await api('contractors.update', { contractor }, true, { timeoutMs: 30000 });
+  if (updates.length) await loadContractors();
+}
+
+function openContractorDialog(mode, row, contractor = null) {
   if (!ensureConnected()) return;
   state.pendingContractorRow = row;
+  state.editingContractorId = contractor?.ContractorID || '';
   const type = mode === 'INDIVIDUAL' ? 'INDIVIDUAL' : 'TEAM';
+  $('#contractor-id').value = state.editingContractorId;
   $('#contractor-type').value = type;
-  $('#contractor-dialog-title').textContent = type === 'TEAM' ? 'เพิ่มทีมแทง' : 'เพิ่มบุคคล';
-  $('#contractor-name').value = '';
-  $('#contractor-method').value = type === 'TEAM' ? 'PER_KG' : 'PER_PERSON';
-  $('#contractor-rate').value = '';
-  $('#contractor-headcount').value = '';
-  $('#contractor-phone').value = '';
-  $('#contractor-notes').value = '';
+  $('#contractor-dialog-title').textContent = contractor ? 'แก้ไขข้อมูลประจำ' : (type === 'TEAM' ? 'เพิ่มทีมแทง' : 'เพิ่มบุคคล');
+  $('#contractor-name').value = contractor?.Name || '';
+  $('#contractor-method').value = contractor?.CalculationMethod || (type === 'TEAM' ? 'PER_KG' : 'PER_PERSON');
+  $('#contractor-rate').value = valueForInput(contractor?.DefaultRate);
+  $('#contractor-headcount').value = valueForInput(contractor?.DefaultHeadcount);
+  $('#contractor-phone').value = contractor?.Phone || '';
+  $('#contractor-notes').value = contractor?.Notes || '';
+  $('#contractor-active').checked = contractor ? !(contractor.Active === false || String(contractor.Active).toUpperCase() === 'FALSE') : true;
   updateContractorDialogFields();
   const dialog = $('#contractor-dialog');
   if (typeof dialog.showModal === 'function') dialog.showModal(); else dialog.setAttribute('open', '');
@@ -242,6 +327,7 @@ function closeContractorDialog() {
   const select = state.pendingContractorRow?.querySelector('.labor-contractor-select');
   if (select?.value === '__new__') select.value = '';
   state.pendingContractorRow = null;
+  state.editingContractorId = '';
 }
 
 function updateContractorDialogFields() {
@@ -253,13 +339,15 @@ async function saveContractor(event) {
   const contractorType = $('#contractor-type').value;
   setLoading(true, 'กำลังบันทึกรายชื่อ…');
   try {
-    const contractor = await api('contractors.create', { contractor: {
-      contractorType, name: $('#contractor-name').value.trim(), calculationMethod: $('#contractor-method').value,
+    const action = state.editingContractorId ? 'contractors.update' : 'contractors.create';
+    const contractor = await api(action, { contractor: {
+      contractorId: state.editingContractorId, contractorType, name: $('#contractor-name').value.trim(), calculationMethod: $('#contractor-method').value,
       defaultRate: numberOrNull($('#contractor-rate').value) || 0,
       defaultHeadcount: numberOrNull($('#contractor-headcount').value) || 0,
-      phone: $('#contractor-phone').value.trim(), notes: $('#contractor-notes').value.trim()
+      phone: $('#contractor-phone').value.trim(), notes: $('#contractor-notes').value.trim(), active: $('#contractor-active').checked
     } }, true, { timeoutMs: 30000 });
-    state.contractors.push(contractor);
+    const existingIndex = state.contractors.findIndex(item => String(item.ContractorID) === String(contractor.ContractorID));
+    if (existingIndex >= 0) state.contractors[existingIndex] = contractor; else state.contractors.push(contractor);
     const row = state.pendingContractorRow;
     closeContractorDialog();
     if (row?.isConnected) {
@@ -269,7 +357,8 @@ async function saveContractor(event) {
       applyContractorToRow(row, contractor.ContractorID);
       updateLaborRow(row); calculateLaborTotals(); saveDraft();
     }
-    toast('บันทึกรายชื่อแล้ว รอบต่อไปเลือกใช้ได้ทันที');
+    await loadContractors();
+    toast(action === 'contractors.update' ? 'แก้ไขข้อมูลประจำแล้ว' : 'บันทึกรายชื่อแล้ว รอบต่อไปเลือกใช้ได้ทันที');
   } catch (error) { handleError(error); }
   finally { setLoading(false); }
 }
@@ -284,11 +373,25 @@ function bindSettings() {
 }
 
 function bindFilters() {
-  $('#filter-month').addEventListener('change', loadHistory);
+  ['#filter-month','#filter-work-mode','#filter-contractor','#filter-payment-status','#filter-date-from','#filter-date-to']
+    .forEach(selector => $(selector).addEventListener('change', loadHistory));
   let timer;
   $('#filter-search').addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(loadHistory, 300); });
-  $('#clear-filters').addEventListener('click', () => { $('#filter-month').value = ''; $('#filter-search').value = ''; loadHistory(); });
+  $('#clear-filters').addEventListener('click', () => {
+    ['#filter-month','#filter-search','#filter-work-mode','#filter-contractor','#filter-payment-status','#filter-date-from','#filter-date-to']
+      .forEach(selector => { $(selector).value = ''; });
+    loadHistory();
+  });
   $('#dashboard-year').addEventListener('change', loadDashboard);
+}
+
+function refreshContractorFilter() {
+  const select = $('#filter-contractor');
+  if (!select) return;
+  const selected = select.value;
+  select.innerHTML = '<option value="">ทุกทีมและบุคคล</option>' + state.contractors.map(item =>
+    `<option value="${escapeHtml(item.ContractorID)}">${escapeHtml(item.Name)} • ${item.ContractorType === 'TEAM' ? 'ทีมแทง' : 'บุคคล'}</option>`).join('');
+  if ([...select.options].some(option => option.value === selected)) select.value = selected;
 }
 
 function bindReceiptViewer() {
@@ -301,6 +404,133 @@ function bindReceiptViewer() {
   });
   viewer.addEventListener('click', event => { if (event.target === viewer) closeReceiptViewer(); });
   viewer.addEventListener('cancel', event => { event.preventDefault(); closeReceiptViewer(); });
+}
+
+function bindSaleDetail() {
+  const dialog = $('#sale-detail-dialog');
+  $('#close-sale-detail').addEventListener('click', closeSaleDetail);
+  $('#cancel-payment').addEventListener('click', () => $('#labor-payment-form').classList.add('hidden'));
+  $('#labor-payment-form').addEventListener('submit', saveLaborPayment);
+  $('#detail-edit-sale').addEventListener('click', () => {
+    const saleId = state.viewingSaleDetail?.SaleID;
+    closeSaleDetail();
+    if (saleId) editSale(saleId);
+  });
+  $('#detail-view-receipt').addEventListener('click', () => {
+    const item = state.viewingSaleDetail;
+    if (!item?.ImageFileID) return toast('รายการนี้ไม่มีภาพใบชั่ง');
+    closeSaleDetail();
+    openReceiptViewer({ saleId:item.SaleID, fileId:item.ImageFileID, driveUrl:item.imageUrl,
+      meta:`ใบชั่ง ${item.ReceiptNumber || '—'} • ${formatThaiDate(item.SaleDate)}` });
+  });
+  $('#sale-detail-content').addEventListener('click', event => {
+    const button = event.target.closest('.pay-labor-button');
+    if (button) openPaymentPanel(button.dataset);
+  });
+  dialog.addEventListener('click', event => { if (event.target === dialog) closeSaleDetail(); });
+  dialog.addEventListener('cancel', event => { event.preventDefault(); closeSaleDetail(); });
+}
+
+async function openSaleDetail(saleId) {
+  if (!ensureConnected()) return;
+  setLoading(true, 'กำลังเปิดรายละเอียดรอบขาย…');
+  try {
+    const [item, payments] = await Promise.all([
+      api('sales.get', { saleId }),
+      api('labor.payments.list', { saleId })
+    ]);
+    state.viewingSaleDetail = item;
+    $('#sale-detail-title').textContent = `รอบขาย ${formatThaiDate(item.SaleDate)}`;
+    $('#sale-detail-meta').textContent = `ใบชั่ง ${item.ReceiptNumber || '—'} • ${item.BuyerNameRaw || 'ไม่ระบุลาน'}`;
+    $('#detail-view-receipt').disabled = !item.ImageFileID;
+    $('#labor-payment-form').classList.add('hidden');
+    renderSaleDetail(item, payments || []);
+    const dialog = $('#sale-detail-dialog');
+    if (typeof dialog.showModal === 'function') dialog.showModal(); else dialog.setAttribute('open', '');
+  } catch (error) { handleError(error); }
+  finally { setLoading(false); }
+}
+
+function closeSaleDetail() {
+  const dialog = $('#sale-detail-dialog');
+  if (typeof dialog.close === 'function' && dialog.open) dialog.close(); else dialog.removeAttribute('open');
+  state.viewingSaleDetail = null;
+  $('#labor-payment-form').classList.add('hidden');
+}
+
+function renderSaleDetail(item, payments) {
+  const labor = item.laborSummary || { totalLaborCost:0, amountPaid:0, balanceDue:0 };
+  const entries = (item.laborEntries || []).filter(entry => String(entry.RecordStatus || 'ACTIVE') !== 'VOID');
+  const entryHtml = entries.length ? entries.map(entry => {
+    const mode = String(entry.WorkMode || 'SELF').toUpperCase();
+    const method = entry.CalculationMethod === 'PER_KG'
+      ? `${formatNumber(entry.WeightKgSnapshot, 0)} กก. × ${formatNumber(entry.RateSnapshot, 2)} บาท`
+      : entry.CalculationMethod === 'PER_PERSON'
+        ? `${formatNumber(entry.Headcount, 0)} คน × ${formatNumber(entry.RateSnapshot, 2)} บาท`
+        : 'ไม่มีค่าแรง';
+    const status = paymentStatusLabel(entry.PaymentStatus, Number(entry.LaborCost || 0));
+    const payButton = Number(entry.BalanceDue || 0) > 0
+      ? `<button class="pay-labor-button" type="button" data-entry-id="${escapeHtml(entry.LaborEntryID)}" data-name="${escapeHtml(entry.ContractorNameSnapshot || 'ค่าแรง')}" data-balance="${escapeHtml(entry.BalanceDue)}">บันทึกการจ่าย</button>` : '';
+    return `<article class="detail-labor-row"><div><strong>${escapeHtml(entry.ContractorNameSnapshot || (mode === 'SELF' ? 'จัดการเอง' : 'ไม่ระบุชื่อ'))}</strong><small>${escapeHtml(method)} • ${escapeHtml(status)}</small></div><div><b>${formatMoney(entry.LaborCost)}</b><small>จ่ายแล้ว ${formatMoney(entry.AmountPaid)}</small>${payButton}</div></article>`;
+  }).join('') : '<p class="detail-empty">ยังไม่มีข้อมูลทีมและค่าแรง</p>';
+  const paymentHtml = payments.length ? payments.map(payment => `<li><span>${formatThaiDate(payment.PaymentDate)} • ${paymentMethodLabel(payment.PaymentMethod)}</span><strong>${formatMoney(payment.Amount)}</strong>${payment.Notes ? `<small>${escapeHtml(payment.Notes)}</small>` : ''}</li>`).join('') : '<li class="detail-empty">ยังไม่มีประวัติการจ่าย</li>';
+  $('#sale-detail-content').innerHTML = `
+    <div class="detail-summary-grid">
+      <div><span>น้ำหนักสุทธิ</span><strong>${formatNumber(item.NetWeightKg, 0)} กก.</strong></div>
+      <div><span>ราคาปาล์ม</span><strong>${formatNumber(item.PricePerKg, 2)} บ./กก.</strong></div>
+      <div><span>ยอดขายสุทธิ</span><strong>${formatMoney(item.NetAmount)}</strong></div>
+      <div><span>ค่าแรงรวม</span><strong>${formatMoney(labor.totalLaborCost)}</strong></div>
+      <div><span>จ่ายค่าแรงแล้ว</span><strong>${formatMoney(labor.amountPaid)}</strong></div>
+      <div><span>ค้างจ่าย</span><strong>${formatMoney(labor.balanceDue)}</strong></div>
+      <div class="detail-net"><span>คงเหลือหลังหักค่าแรง</span><strong>${formatMoney(item.netAfterLabor)}</strong></div>
+    </div>
+    <section class="detail-section"><h3>ทีมงานและค่าแรง</h3>${entryHtml}</section>
+    <section class="detail-section"><h3>ประวัติการจ่ายค่าแรง</h3><ul class="payment-history">${paymentHtml}</ul></section>`;
+}
+
+function openPaymentPanel(data) {
+  const balance = Number(data.balance || 0);
+  $('#payment-labor-entry-id').value = data.entryId || '';
+  $('#payment-contractor-name').textContent = data.name || 'บันทึกการจ่ายค่าแรง';
+  $('#payment-balance-label').textContent = `ยอดค้าง ${formatMoney(balance)}`;
+  $('#payment-amount').max = String(balance);
+  $('#payment-amount').value = balance || '';
+  $('#payment-date').value = new Date().toLocaleDateString('en-CA', { timeZone:'Asia/Bangkok' });
+  $('#payment-method').value = 'CASH';
+  $('#payment-notes').value = '';
+  $('#labor-payment-form').classList.remove('hidden');
+  $('#labor-payment-form').scrollIntoView({ behavior:'smooth', block:'center' });
+}
+
+async function saveLaborPayment(event) {
+  event.preventDefault();
+  const item = state.viewingSaleDetail;
+  if (!item) return;
+  setLoading(true, 'กำลังบันทึกการจ่ายค่าแรง…');
+  try {
+    await api('labor.payments.create', {
+      laborEntryId:$('#payment-labor-entry-id').value,
+      amount:numberOrNull($('#payment-amount').value),
+      paymentDate:$('#payment-date').value,
+      paymentMethod:$('#payment-method').value,
+      notes:$('#payment-notes').value.trim()
+    }, true, { timeoutMs:30000 });
+    const saleId = item.SaleID;
+    closeSaleDetail();
+    toast('บันทึกการจ่ายค่าแรงแล้ว');
+    await loadHistory();
+    await openSaleDetail(saleId);
+  } catch (error) { handleError(error); }
+  finally { setLoading(false); }
+}
+
+function paymentStatusLabel(status, laborCost = 1) {
+  if (laborCost <= 0) return 'จัดการเอง';
+  return status === 'PAID' ? 'จ่ายครบแล้ว' : status === 'PARTIAL' ? 'จ่ายบางส่วน' : 'ยังไม่จ่าย';
+}
+
+function paymentMethodLabel(method) {
+  return method === 'CASH' ? 'เงินสด' : method === 'TRANSFER' ? 'โอนเงิน' : (method || 'ไม่ระบุวิธี');
 }
 
 async function selectImage(event, source) {
@@ -428,10 +658,12 @@ async function saveSale(event, duplicateOverride = false) {
   let laborEntries;
   try { laborEntries = collectLaborEntries(); }
   catch (error) { handleError(error); $('#labor-fieldset').scrollIntoView({ behavior: 'smooth', block: 'start' }); return; }
+  const contractorUpdates = collectContractorUpdates();
   if (state.editingSaleId) {
     setLoading(true, 'กำลังบันทึกการแก้ไข…');
     try {
       const data = await api('sales.update', { saleId: state.editingSaleId, expectedUpdatedAt: state.expectedUpdatedAt, sale, laborEntries }, true, { timeoutMs: 45000 });
+      await applyContractorUpdates(contractorUpdates);
       localStorage.removeItem('palmDraft'); resetCapture();
       toast(data.updated ? 'แก้ไขข้อมูลเรียบร้อยแล้ว' : 'บันทึกเรียบร้อยแล้ว');
       await showView('history');
@@ -453,7 +685,7 @@ async function saveSale(event, duplicateOverride = false) {
       attempts: 0,
       status: 'pending',
       lastError: '',
-      payload: { sale, laborEntries, image, source: state.source, ocrRunId: state.ocrRunId, model: state.model,
+      payload: { sale, laborEntries, contractorUpdates, image, source: state.source, ocrRunId: state.ocrRunId, model: state.model,
         idempotencyKey, duplicateOverride }
     });
     localStorage.removeItem('palmDraft');
@@ -517,19 +749,43 @@ async function loadHistory() {
   if (!ensureConnected(false)) return;
   setLoading(true, 'กำลังโหลดประวัติ…');
   try {
+    if (!state.contractorsLoaded) await loadContractors();
     const monthValue = $('#filter-month').value;
-    const query = $('#filter-search').value.trim();
+    const query = normalizeSearch($('#filter-search').value);
+    const workMode = $('#filter-work-mode').value;
+    const contractorId = $('#filter-contractor').value;
+    const paymentStatus = $('#filter-payment-status').value;
+    const fromDate = $('#filter-date-from').value;
+    const toDate = $('#filter-date-to').value;
     const filters = { limit: 100 };
     if (monthValue) { filters.year = monthValue.slice(0, 4); filters.month = monthValue.slice(5, 7); }
+    if (fromDate) filters.fromDate = fromDate;
+    if (toDate) filters.toDate = toDate;
     const items = await api('sales.list', filters);
-    const filtered = items.filter(item => !query || `${item.ReceiptNumber || ''} ${item.BuyerNameRaw || ''}`.toLowerCase().includes(query.toLowerCase()));
+    const filtered = items.filter(item => {
+      const laborEntries = item.laborEntries || [];
+      const searchable = normalizeSearch(`${item.ReceiptNumber || ''} ${item.BuyerNameRaw || ''} ${laborEntries.map(entry => entry.ContractorNameSnapshot || '').join(' ')}`);
+      if (query && !searchable.includes(query)) return false;
+      if (workMode && !laborEntries.some(entry => String(entry.WorkMode).toUpperCase() === workMode)) return false;
+      if (contractorId && !laborEntries.some(entry => String(entry.ContractorID) === contractorId)) return false;
+      if (paymentStatus && String(item.laborSummary?.paymentStatus || '').toUpperCase() !== paymentStatus) return false;
+      return true;
+    });
     const pending = (await queueGetAll().catch(() => [])).filter(job => {
       const sale = job.payload?.sale || {};
+      const laborEntries = job.payload?.laborEntries || [];
       if (monthValue && String(sale.saleDate || '').slice(0, 7) !== monthValue) return false;
-      return !query || `${sale.receiptNumber || ''} ${sale.buyerName || ''}`.toLowerCase().includes(query.toLowerCase());
+      if (fromDate && String(sale.saleDate || '') < fromDate) return false;
+      if (toDate && String(sale.saleDate || '') > toDate) return false;
+      if (query && !normalizeSearch(`${sale.receiptNumber || ''} ${sale.buyerName || ''}`).includes(query)) return false;
+      if (workMode && !laborEntries.some(entry => String(entry.workMode || '').toUpperCase() === workMode)) return false;
+      if (contractorId && !laborEntries.some(entry => String(entry.contractorId || '') === contractorId)) return false;
+      if (paymentStatus && paymentStatus !== 'UNPAID') return false;
+      return true;
     });
     const totalVisible = filtered.length + pending.length;
-    $('#history-count').textContent = (monthValue || query) ? `ล่าสุดอยู่บนสุด • แสดง ${totalVisible} รายการตามตัวกรอง` : `ล่าสุดอยู่บนสุด • พบ ${totalVisible} รายการ`;
+    const hasFilters = monthValue || query || workMode || contractorId || paymentStatus || fromDate || toDate;
+    $('#history-count').textContent = hasFilters ? `ล่าสุดอยู่บนสุด • แสดง ${totalVisible} รายการตามตัวกรอง` : `ล่าสุดอยู่บนสุด • พบ ${totalVisible} รายการ`;
     renderHistory(filtered, pending);
   } catch (error) { $('#history-count').textContent = 'โหลดรายการไม่สำเร็จ'; handleError(error); } finally { setLoading(false); }
 }
@@ -550,6 +806,7 @@ function renderHistory(items, pending = []) {
   }).join('');
   $$('.view-receipt').forEach(button => button.addEventListener('click', () => openReceiptViewer(button.dataset)));
   $$('.edit-sale').forEach(button => button.addEventListener('click', () => editSale(button.dataset.saleId)));
+  $$('.view-sale-detail').forEach(button => button.addEventListener('click', () => openSaleDetail(button.dataset.saleId)));
 }
 
 function renderPendingHistoryCard(job, latestBadge) {
@@ -562,7 +819,8 @@ function renderSavedHistoryCard(item, latestBadge) {
     const imageButton = item.ImageFileID ? `<button class="history-action view-receipt" type="button" data-sale-id="${escapeHtml(item.SaleID)}" data-file-id="${escapeHtml(item.ImageFileID)}" data-drive-url="${escapeHtml(item.imageUrl || '')}" data-meta="${escapeHtml(`ใบชั่ง ${item.ReceiptNumber || '—'} • ${formatThaiDate(item.SaleDate)}`)}"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3Z"/><circle cx="12" cy="13" r="3"/></svg> ดูภาพใบชั่ง</button>` : `<span class="no-receipt-image">ไม่มีรูปภาพ</span>`;
   const labor = item.laborSummary || { totalLaborCost: 0, balanceDue: 0, paymentStatus: 'PAID' };
   const status = labor.totalLaborCost <= 0 ? 'จัดการเอง' : (labor.paymentStatus === 'PAID' ? 'จ่ายครบแล้ว' : labor.paymentStatus === 'PARTIAL' ? 'จ่ายบางส่วน' : 'ยังไม่จ่าย');
-  return `<article class="history-card" data-sale-id="${escapeHtml(item.SaleID)}"><div class="history-main"><div><div class="history-date-row"><h3>${escapeHtml(formatThaiDate(item.SaleDate))}</h3>${latestBadge}</div><p>${escapeHtml(item.BuyerNameRaw || 'ไม่ระบุลาน')} • ${formatNumber(item.NetWeightKg, 0)} กก.</p><p>ค่าแรง ${formatMoney(labor.totalLaborCost)} • ${escapeHtml(status)}</p></div><div class="amount"><strong>${formatMoney(item.netAfterLabor ?? item.NetAmount)}</strong><small>คงเหลือหลังค่าแรง</small></div></div><div class="history-actions">${imageButton}<button class="history-action edit-sale" type="button" data-sale-id="${escapeHtml(item.SaleID)}"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg> แก้ไขข้อมูล</button></div></article>`;
+  const contractorNames = (item.laborEntries || []).filter(entry => String(entry.WorkMode) !== 'SELF').map(entry => entry.ContractorNameSnapshot).filter(Boolean).join(', ');
+  return `<article class="history-card" data-sale-id="${escapeHtml(item.SaleID)}"><div class="history-main"><div><div class="history-date-row"><h3>${escapeHtml(formatThaiDate(item.SaleDate))}</h3>${latestBadge}</div><p>${escapeHtml(item.BuyerNameRaw || 'ไม่ระบุลาน')} • ${formatNumber(item.NetWeightKg, 0)} กก.</p><p>${contractorNames ? `${escapeHtml(contractorNames)} • ` : ''}ค่าแรง ${formatMoney(labor.totalLaborCost)} • ${escapeHtml(status)}</p></div><div class="amount"><strong>${formatMoney(item.netAfterLabor ?? item.NetAmount)}</strong><small>คงเหลือหลังค่าแรง</small></div></div><div class="history-actions">${imageButton}<button class="history-action view-sale-detail" type="button" data-sale-id="${escapeHtml(item.SaleID)}">ดูรายละเอียด</button><button class="history-action edit-sale" type="button" data-sale-id="${escapeHtml(item.SaleID)}"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg> แก้ไขข้อมูล</button></div></article>`;
 }
 
 function renderSaleGap(newerDate, olderDate) {
@@ -637,6 +895,7 @@ async function saveSettings() {
   try {
     const health = await api('health', {}, false, { timeoutMs: 20000 });
     await api('settings.get', {}, true, { timeoutMs: 20000 });
+    await loadContractors();
     const box = $('#connection-result'); box.className = 'notice success'; box.textContent = `เชื่อมต่อสำเร็จ — Backend ${health.version}`;
     toast('เชื่อมต่อระบบเรียบร้อยแล้ว');
     processPendingSaves(false);
@@ -758,6 +1017,8 @@ async function processPendingSaves(interactive = false) {
         await queuePut(job); await refreshQueueUI();
         try {
           await api('sales.create', job.payload, true, { timeoutMs: 50000 });
+          try { await applyContractorUpdates(job.payload.contractorUpdates || []); }
+          catch (contractorError) { console.warn('Unable to update contractor defaults', contractorError); }
           await queueDelete(job.id); savedCount += 1; sending = false;
         } catch (error) {
           if (error.code === 'DUPLICATE_SUSPECTED') {
@@ -812,6 +1073,7 @@ function valueForInput(value){return value===null||value===undefined?'':value;}
 function formatNumber(value,digits=0){return new Intl.NumberFormat('th-TH',{minimumFractionDigits:digits,maximumFractionDigits:digits}).format(Number(value||0));}
 function formatMoney(value){return new Intl.NumberFormat('th-TH',{style:'currency',currency:'THB',maximumFractionDigits:2}).format(Number(value||0));}
 function formatThaiDate(value){if(!value)return 'ไม่ระบุวันที่';const date=new Date(`${String(value).slice(0,10)}T12:00:00+07:00`);return new Intl.DateTimeFormat('th-TH',{day:'numeric',month:'short',year:'numeric'}).format(date);}
+function normalizeSearch(value){return String(value||'').trim().toLocaleLowerCase('th-TH').replace(/\s+/g,' ');}
 function escapeHtml(value){return String(value??'').replace(/[&<>"]/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[char]));}
 function cssEscape(value){return window.CSS?.escape?CSS.escape(value):String(value).replace(/[^a-zA-Z0-9_-]/g,'\\$&');}
 function readFileAsDataUrl(file){return new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=reject;reader.readAsDataURL(file);});}

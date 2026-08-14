@@ -31,10 +31,12 @@ if (summary.totalLaborCost !== 2062.5 || summary.amountPaid !== 1400 ||
 
 const frontend = fs.readFileSync('frontend/app.js', 'utf8');
 const html = fs.readFileSync('frontend/index.html', 'utf8');
-for (const marker of ['collectLaborEntries', "api('contractors.list'", "api('contractors.create'", 'clientLaborSummary']) {
+for (const marker of ['collectLaborEntries', "api('contractors.list'", "'contractors.create'", "'contractors.update'", 'clientLaborSummary',
+  'collectContractorUpdates', "api('labor.payments.create'", "api('labor.payments.list'", 'openSaleDetail']) {
   if (!frontend.includes(marker)) throw new Error(`Missing frontend labor marker: ${marker}`);
 }
-for (const marker of ['labor-entries-list', 'set-self-managed', 'contractor-dialog', 'sum-labor']) {
+for (const marker of ['labor-entries-list', 'set-self-managed', 'contractor-dialog', 'sum-labor', 'sale-detail-dialog',
+  'labor-payment-form', 'filter-contractor', 'filter-payment-status', 'filter-date-from', 'filter-date-to']) {
   if (!html.includes(marker)) throw new Error(`Missing labor UI marker: ${marker}`);
 }
 

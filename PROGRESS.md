@@ -6,12 +6,12 @@
 
 - Phase 0 — Discovery & Architecture: **Completed**
 - Phase 1 — Google Sheets / Apps Script Foundation: **Completed and live verified**
-- Phase 2 — Backend API / Validation / Duplicate / Audit: **Code completed**
-- Phase 3 — Gemini Vision Structured OCR: **Code completed; live receipt test pending deployment**
-- Phase 4 — Mobile Frontend / Review / History / Edit: **Code completed**
-- Phase 5 — Dashboard / Analytics: **Code completed**
-- Phase 6 — PWA / Offline App Shell: **Code completed**
-- Phase 7 — Static / Unit QA: **Passed; production E2E pending deployment**
+- Phase 2 — Backend API / Validation / Duplicate / Audit: **Completed**
+- Phase 3 — Gemini Vision Structured OCR: **Completed and live configured**
+- Phase 4 — Mobile Frontend / Review / History / Edit: **Completed**
+- Phase 5 — Dashboard / Analytics: **Completed**
+- Phase 6 — PWA / Offline App Shell: **Completed**
+- Phase 7 — Static / Unit QA: **Passed**
 - Phase 8 — Contractor & Labor Management: **Completed and live verified**
 
 ## Live verified foundation
@@ -47,6 +47,10 @@
 - Per-kilogram, per-person and self-managed labor calculations
 - Rate snapshots that preserve historical accuracy
 - Unpaid/partial/paid labor status and payment history
+- Contractor search, edit, active status and latest-used ordering
+- Per-round rate override with optional default-rate update
+- Sale detail view with labor payment entry and payment history
+- History filters by contractor, work mode, payment status and date range
 - Dashboard and history totals after labor cost
 - Safe `upgradeLaborSystem()` migration with a full spreadsheet backup
 
@@ -56,26 +60,27 @@
 - Frontend JS and Service Worker syntax: passed
 - Manifest and OAuth scopes: passed
 - Required Backend functions: 20/20
-- Frontend referenced element IDs: 78/78
+- Frontend referenced element IDs: 101/101
 - Secret scan: passed
 - Backend normalization/validation/duplicate/dashboard tests: passed
 - Labor calculation/payment summary tests: passed
 - PWA icon sizes: 192×192 and 512×512
 
-## Pending production action
+## Closeout status
 
-1. Publish Frontend `2.3.0` and run one full mobile save test
+- Development scope in `next-features.md`: **Complete**
+- Remaining activity after deployment: owner acceptance check on the next real sale (no code task remains)
 
 ## Resources
 
 - Apps Script Project: https://script.google.com/u/0/home/projects/1PzG5lE7bxpSMSyO_BOBx9DGuFTZMTw_7mBV7o12c6HoWMKqzLlmwaGaz/edit
 - Apps Script Deployment: https://script.google.com/macros/s/AKfycbwttI8iFWVls788jXX-nV_7MZsFvwGkwDaIU3JdfcmEqH9zYYzQ5pxGeSza6NLJqmxQGA/exec
 - Spreadsheet: https://docs.google.com/spreadsheets/d/1S5WtdhsVUOQ5APZ_EiBKSZBTeyi6VKnVLeaGbWPBAPc/edit
-- Expected GitHub Pages: https://aodxx.github.io/Pem/
+- GitHub Pages: https://aodxx.github.io/Pem/
 
 ## Versions
 
 - Backend: `1.3.0`
-- Frontend/PWA: `2.3.0`
+- Frontend/PWA: `2.4.0`
 - API: `v1`
 - Gemini schema: `1.0.0`

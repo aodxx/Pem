@@ -143,7 +143,16 @@
 
     <section id="view-history" class="view" aria-labelledby="history-title">
       <div class="section-title"><div><span class="eyebrow">ค้นหาและตรวจสอบย้อนหลัง</span><h1 id="history-title">รายการขาย</h1><small id="history-count">กำลังโหลด…</small></div></div>
-      <div class="filters"><label class="search-field"><span aria-hidden="true">⌕</span><input id="filter-search" type="search" placeholder="เลขใบชั่ง หรือลานรับซื้อ"></label><input id="filter-month" type="month" aria-label="กรองเดือน"><button id="clear-filters" class="button secondary" type="button">ล้างตัวกรอง</button></div>
+      <div class="filters history-filters">
+        <label class="search-field"><span aria-hidden="true">⌕</span><input id="filter-search" type="search" placeholder="เลขใบชั่ง ลานรับซื้อ หรือชื่อทีม"></label>
+        <label>ประเภทการจ้าง<select id="filter-work-mode"><option value="">ทุกประเภท</option><option value="SELF">จัดการเอง</option><option value="TEAM">จ้างทีมแทง</option><option value="INDIVIDUAL">จ้างบุคคล</option></select></label>
+        <label>ทีม/บุคคล<select id="filter-contractor"><option value="">ทุกทีมและบุคคล</option></select></label>
+        <label>สถานะค่าแรง<select id="filter-payment-status"><option value="">ทุกสถานะ</option><option value="UNPAID">ยังไม่จ่าย</option><option value="PARTIAL">จ่ายบางส่วน</option><option value="PAID">จ่ายครบแล้ว</option></select></label>
+        <label>ตั้งแต่วันที่<input id="filter-date-from" type="date"></label>
+        <label>ถึงวันที่<input id="filter-date-to" type="date"></label>
+        <input id="filter-month" type="month" aria-label="กรองเดือน">
+        <button id="clear-filters" class="button secondary" type="button">ล้างตัวกรอง</button>
+      </div>
       <div id="history-list" class="history-list empty">ยังไม่มีข้อมูลการขาย</div>
     </section>
 
@@ -189,6 +198,7 @@
         <button id="close-contractor-dialog" class="viewer-close" type="button" aria-label="ปิด">×</button>
       </div>
       <div class="contractor-form-body">
+        <input id="contractor-id" type="hidden">
         <input id="contractor-type" type="hidden" value="TEAM">
         <label>ชื่อทีม/ชื่อบุคคล<input id="contractor-name" required placeholder="เช่น ทีมช่างแดง"></label>
         <div class="form-grid">
@@ -198,9 +208,30 @@
           <label>เบอร์โทรศัพท์<input id="contractor-phone" inputmode="tel"></label>
         </div>
         <label>หมายเหตุ<textarea id="contractor-notes" rows="2"></textarea></label>
+        <label class="checkbox-label"><input id="contractor-active" type="checkbox" checked> ใช้งานชื่อนี้ในรายการเลือก</label>
       </div>
       <div class="viewer-actions"><button id="cancel-contractor" class="button secondary" type="button">ยกเลิก</button><button class="button primary" type="submit">บันทึกและเลือกใช้</button></div>
     </form>
+  </dialog>
+
+  <dialog id="sale-detail-dialog" class="sale-detail-dialog" aria-labelledby="sale-detail-title">
+    <div class="viewer-header">
+      <div><span class="step-kicker">รายละเอียดรอบขายและค่าแรง</span><h2 id="sale-detail-title">รายละเอียดรอบขาย</h2><p id="sale-detail-meta">—</p></div>
+      <button id="close-sale-detail" class="viewer-close" type="button" aria-label="ปิด">×</button>
+    </div>
+    <div id="sale-detail-content" class="sale-detail-content"></div>
+    <form id="labor-payment-form" class="payment-panel hidden">
+      <input id="payment-labor-entry-id" type="hidden">
+      <div class="payment-heading"><div><strong id="payment-contractor-name">บันทึกการจ่ายค่าแรง</strong><small id="payment-balance-label">—</small></div><button id="cancel-payment" class="text-button" type="button">ยกเลิก</button></div>
+      <div class="form-grid">
+        <label>จำนวนเงินที่จ่าย<input id="payment-amount" type="number" min="0.01" step="0.01" inputmode="decimal" required></label>
+        <label>วันที่จ่าย<input id="payment-date" type="date" required></label>
+        <label>วิธีชำระ<select id="payment-method"><option value="CASH">เงินสด</option><option value="TRANSFER">โอนเงิน</option><option value="OTHER">อื่น ๆ</option></select></label>
+        <label>หมายเหตุ<input id="payment-notes" placeholder="ไม่บังคับ"></label>
+      </div>
+      <button class="button primary full" type="submit">ยืนยันการจ่าย</button>
+    </form>
+    <div class="viewer-actions sale-detail-actions"><button id="detail-view-receipt" class="button secondary" type="button">ดูภาพใบชั่ง</button><button id="detail-edit-sale" class="button primary" type="button">แก้ไขรายการ</button></div>
   </dialog>
 
   <div id="loading" class="loading hidden" role="status"><div class="spinner"></div><strong id="loading-text">กำลังทำงาน…</strong></div>

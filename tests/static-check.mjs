@@ -42,6 +42,12 @@ for (const timelineLogic of ['saleDateValue', 'renderSaleGap', 'b.date - a.date'
   if (!app.includes(timelineLogic)) throw new Error(`Missing chronological timeline logic: ${timelineLogic}`);
 }
 if (!fs.readFileSync('frontend/styles-v2.css', 'utf8').includes('.sale-gap')) throw new Error('Missing sale timeline connector styles');
+for (const closeoutLogic of ['openSaleDetail', 'saveLaborPayment', 'collectContractorUpdates', 'filterContractorSelect', 'paymentStatusLabel']) {
+  if (!app.includes(closeoutLogic)) throw new Error(`Missing closeout feature logic: ${closeoutLogic}`);
+}
+for (const closeoutUi of ['sale-detail-dialog','labor-payment-form','filter-work-mode','filter-contractor','filter-payment-status','filter-date-from','filter-date-to']) {
+  if (!html.includes(`id="${closeoutUi}"`)) throw new Error(`Missing closeout feature UI: ${closeoutUi}`);
+}
 if (!app.includes('<option value="all">ทุกปี</option>')) throw new Error('Missing all-years dashboard option');
 const ids = [...app.matchAll(/\$\(['"]#([a-zA-Z0-9_-]+)['"]\)/g)].map(match => match[1]);
 for (const id of new Set(ids)) {
