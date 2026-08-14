@@ -145,16 +145,22 @@
 
     <section id="view-history" class="view" aria-labelledby="history-title">
       <div class="section-title"><div><span class="eyebrow">ค้นหาและตรวจสอบย้อนหลัง</span><h1 id="history-title">รายการขาย</h1><small id="history-count">กำลังโหลด…</small></div></div>
-      <div class="filters history-filters">
-        <label class="search-field"><span aria-hidden="true">⌕</span><input id="filter-search" type="search" placeholder="เลขใบชั่ง ลานรับซื้อ หรือชื่อทีม"></label>
-        <label>ประเภทการจ้าง<select id="filter-work-mode"><option value="">ทุกประเภท</option><option value="SELF">จัดการเอง</option><option value="TEAM">จ้างทีมแทง</option><option value="INDIVIDUAL">จ้างบุคคล</option></select></label>
-        <label>ทีม/บุคคล<select id="filter-contractor"><option value="">ทุกทีมและบุคคล</option></select></label>
-        <label>สถานะค่าแรง<select id="filter-payment-status"><option value="">ทุกสถานะ</option><option value="UNPAID">ยังไม่จ่าย</option><option value="PARTIAL">จ่ายบางส่วน</option><option value="PAID">จ่ายครบแล้ว</option></select></label>
-        <label>ตั้งแต่วันที่<input id="filter-date-from" type="date"></label>
-        <label>ถึงวันที่<input id="filter-date-to" type="date"></label>
-        <input id="filter-month" type="month" aria-label="กรองเดือน">
-        <button id="clear-filters" class="button secondary" type="button">ล้างตัวกรอง</button>
-      </div>
+      <details id="history-filter-drawer" class="filter-drawer">
+        <summary>
+          <span class="filter-drawer-title"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M7 12h10M10 18h4"/></svg><strong>ค้นหา / คัดกรอง</strong></span>
+          <span class="filter-drawer-status"><small id="filter-active-count">ยังไม่ได้ใช้ตัวกรอง</small><svg class="ui-icon filter-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></span>
+        </summary>
+        <div class="filters history-filters">
+          <label class="search-field"><span aria-hidden="true">⌕</span><input id="filter-search" type="search" placeholder="เลขใบชั่ง ลานรับซื้อ หรือชื่อทีม"></label>
+          <label>ประเภทการจ้าง<select id="filter-work-mode"><option value="">ทุกประเภท</option><option value="SELF">จัดการเอง</option><option value="TEAM">จ้างทีมแทง</option><option value="INDIVIDUAL">จ้างบุคคล</option></select></label>
+          <label>ทีม/บุคคล<select id="filter-contractor"><option value="">ทุกทีมและบุคคล</option></select></label>
+          <label>สถานะค่าแรง<select id="filter-payment-status"><option value="">ทุกสถานะ</option><option value="UNPAID">ยังไม่จ่าย</option><option value="PARTIAL">จ่ายบางส่วน</option><option value="PAID">จ่ายครบแล้ว</option></select></label>
+          <label>ตั้งแต่วันที่<input id="filter-date-from" type="date"></label>
+          <label>ถึงวันที่<input id="filter-date-to" type="date"></label>
+          <input id="filter-month" type="month" aria-label="กรองเดือน">
+          <button id="clear-filters" class="button secondary" type="button">ล้างตัวกรอง</button>
+        </div>
+      </details>
       <div id="history-list" class="history-list empty">ยังไม่มีข้อมูลการขาย</div>
     </section>
 

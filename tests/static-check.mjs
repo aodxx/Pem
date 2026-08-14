@@ -56,6 +56,13 @@ if ((html.match(/class="nav-item/g) || []).length !== 3) throw new Error('Bottom
 for (const privacyLogic of ['toggleSecretField','hideAllSecrets','visibilitychange','20000']) {
   if (!app.includes(privacyLogic)) throw new Error(`Missing privacy behavior: ${privacyLogic}`);
 }
+for (const filterDrawerUi of ['history-filter-drawer','filter-active-count']) {
+  if (!html.includes(`id="${filterDrawerUi}"`)) throw new Error(`Missing collapsible filter UI: ${filterDrawerUi}`);
+}
+for (const filterDrawerLogic of ['updateFilterDrawerStatus', "$('#history-filter-drawer').open = false"]) {
+  if (!app.includes(filterDrawerLogic)) throw new Error(`Missing collapsible filter behavior: ${filterDrawerLogic}`);
+}
+if (!fs.readFileSync('frontend/styles-v2.css', 'utf8').includes('.filter-drawer[open]')) throw new Error('Missing collapsible filter styles');
 if (!app.includes('<option value="all">ทุกปี</option>')) throw new Error('Missing all-years dashboard option');
 const ids = [...app.matchAll(/\$\(['"]#([a-zA-Z0-9_-]+)['"]\)/g)].map(match => match[1]);
 for (const id of new Set(ids)) {

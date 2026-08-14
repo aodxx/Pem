@@ -413,15 +413,34 @@ function hideAllSecrets() {
 
 function bindFilters() {
   ['#filter-month','#filter-work-mode','#filter-contractor','#filter-payment-status','#filter-date-from','#filter-date-to']
-    .forEach(selector => $(selector).addEventListener('change', loadHistory));
+    .forEach(selector => $(selector).addEventListener('change', () => {
+      updateFilterDrawerStatus();
+      loadHistory();
+    }));
   let timer;
-  $('#filter-search').addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(loadHistory, 300); });
+  $('#filter-search').addEventListener('input', () => {
+    updateFilterDrawerStatus();
+    clearTimeout(timer);
+    timer = setTimeout(loadHistory, 300);
+  });
   $('#clear-filters').addEventListener('click', () => {
     ['#filter-month','#filter-search','#filter-work-mode','#filter-contractor','#filter-payment-status','#filter-date-from','#filter-date-to']
       .forEach(selector => { $(selector).value = ''; });
+    updateFilterDrawerStatus();
+    $('#history-filter-drawer').open = false;
     loadHistory();
   });
   $('#dashboard-year').addEventListener('change', loadDashboard);
+  updateFilterDrawerStatus();
+}
+
+function updateFilterDrawerStatus() {
+  const selectors = ['#filter-search','#filter-work-mode','#filter-contractor','#filter-payment-status','#filter-date-from','#filter-date-to','#filter-month'];
+  const count = selectors.filter(selector => String($(selector).value || '').trim()).length;
+  const label = $('#filter-active-count');
+  label.textContent = count ? `ใช้งาน ${count} ตัวกรอง` : 'ยังไม่ได้ใช้ตัวกรอง';
+  label.classList.toggle('active', count > 0);
+  return count;
 }
 
 function refreshContractorFilter() {
@@ -786,6 +805,7 @@ function renderBuyers(items) {
 
 async function loadHistory() {
   if (!ensureConnected(false)) return;
+  updateFilterDrawerStatus();
   setLoading(true, 'กำลังโหลดประวัติ…');
   try {
     if (!state.contractorsLoaded) await loadContractors();
