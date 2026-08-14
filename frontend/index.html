@@ -12,8 +12,10 @@
 </head>
 <body>
   <header class="topbar">
-    <div class="brand-mark" aria-hidden="true"><span>PL</span></div>
-    <div class="brand-copy"><strong>PALM LEDGER</strong><span>สมุดสวนปาล์ม</span></div>
+    <button id="profile-settings-button" class="profile-settings-button" type="button" aria-label="เปิดหน้าตั้งค่า" title="เปิดการตั้งค่า">
+      <span class="brand-mark" aria-hidden="true"><span>PL</span></span>
+      <span class="brand-copy"><strong>PALM LEDGER</strong><span>สมุดสวนปาล์ม</span></span>
+    </button>
     <div class="sync-pill"><i aria-hidden="true"></i><span id="sync-status">พร้อมใช้งาน</span></div>
     <button id="install-button" class="icon-button hidden" type="button" aria-label="ติดตั้งแอป">↓</button>
   </header>
@@ -34,7 +36,7 @@
 
       <div id="setup-alert" class="notice warning hidden">
         <strong>เชื่อมต่อแอปก่อนเริ่มใช้งาน</strong>
-        <span>เปิดเมนู “ตั้งค่า” แล้วใส่ Access Token จาก Apps Script</span>
+        <span>แตะโลโก้ PL มุมซ้ายบน แล้วใส่ Access Token จาก Apps Script</span>
       </div>
       <div id="pending-banner" class="notice sync-notice hidden">
         <div><strong id="pending-title">มีรายการรอส่ง</strong><span id="pending-message">ข้อมูลเก็บอยู่ในเครื่องนี้อย่างปลอดภัย</span></div>
@@ -160,9 +162,9 @@
       <div class="section-title"><div><span class="eyebrow">ระบบของคุณ</span><h1 id="settings-title">ตั้งค่า</h1></div></div>
       <section class="panel settings-form">
         <div class="settings-intro"><span aria-hidden="true"><svg class="ui-icon" viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg></span><div><strong>การเชื่อมต่อส่วนตัว</strong><p>เชื่อมแอปนี้กับ Google Apps Script ของคุณ</p></div></div>
-        <label>Apps Script Web App URL<input id="api-url" type="url" readonly></label>
-        <label>Access Token<input id="access-token" type="password" autocomplete="off" placeholder="PALM-..."></label>
-        <p class="help">Token เก็บเฉพาะในเครื่องนี้และใช้เรียก Backend ส่วนตัวของคุณ</p>
+        <label>Apps Script Web App URL<span class="secret-field"><input id="api-url" type="password" readonly autocomplete="off" spellcheck="false"><button id="toggle-api-url" class="secret-toggle" type="button" aria-label="แสดง Web App URL" aria-pressed="false"><svg class="ui-icon eye-open" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg><svg class="ui-icon eye-closed hidden" viewBox="0 0 24 24" aria-hidden="true"><path d="m3 3 18 18"/><path d="M10.6 10.6a2 2 0 0 0 2.8 2.8"/><path d="M9.9 4.2A10.5 10.5 0 0 1 12 4c6.5 0 10 8 10 8a17.6 17.6 0 0 1-2.1 3.2M6.6 6.6C3.6 8.5 2 12 2 12s3.5 8 10 8a9.8 9.8 0 0 0 4.1-.9"/></svg></button></span></label>
+        <label>Access Token<span class="secret-field"><input id="access-token" type="password" autocomplete="new-password" autocapitalize="none" spellcheck="false" placeholder="••••••••••••••••"><button id="toggle-access-token" class="secret-toggle" type="button" aria-label="แสดง Access Token" aria-pressed="false"><svg class="ui-icon eye-open" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg><svg class="ui-icon eye-closed hidden" viewBox="0 0 24 24" aria-hidden="true"><path d="m3 3 18 18"/><path d="M10.6 10.6a2 2 0 0 0 2.8 2.8"/><path d="M9.9 4.2A10.5 10.5 0 0 1 12 4c6.5 0 10 8 10 8a17.6 17.6 0 0 1-2.1 3.2M6.6 6.6C3.6 8.5 2 12 2 12s3.5 8 10 8a9.8 9.8 0 0 0 4.1-.9"/></svg></button></span></label>
+        <p class="help">ข้อมูลทั้งสองช่องถูกปิดบังอัตโนมัติ กดรูปตาเมื่อต้องตรวจสอบ และระบบจะซ่อนกลับเมื่อออกจากหน้าตั้งค่า</p>
         <button id="save-settings" class="button primary full" type="button">บันทึกและทดสอบการเชื่อมต่อ</button>
         <div id="connection-result" class="notice hidden"></div>
       </section>
@@ -174,7 +176,6 @@
     <button class="nav-item active capture-nav" data-view="home" type="button"><span class="nav-icon" aria-hidden="true"><svg class="ui-icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M8 12h8M12 8v8"/></svg></span><b>บันทึก</b></button>
     <button class="nav-item" data-view="dashboard" type="button"><span class="nav-icon" aria-hidden="true"><svg class="ui-icon" viewBox="0 0 24 24"><rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/></svg></span><b>ภาพรวม</b></button>
     <button class="nav-item" data-view="history" type="button"><span class="nav-icon" aria-hidden="true"><svg class="ui-icon" viewBox="0 0 24 24"><path d="M4 2v20l2-2 2 2 2-2 2 2 2-2 2 2 2-2 2 2V2l-2 2-2-2-2 2-2-2-2 2-2-2-2 2Z"/><path d="M16 8h-6M16 12h-6M13 16h-3"/></svg></span><b>รายการ</b></button>
-    <button class="nav-item" data-view="settings" type="button"><span class="nav-icon" aria-hidden="true"><svg class="ui-icon" viewBox="0 0 24 24"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.38a2 2 0 0 0-.73-2.73l-.15-.09a2 2 0 0 1-1-1.74v-.51a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2Z"/><circle cx="12" cy="12" r="3"/></svg></span><b>ตั้งค่า</b></button>
   </nav>
 
   <dialog id="receipt-viewer" class="receipt-viewer" aria-labelledby="receipt-viewer-title">

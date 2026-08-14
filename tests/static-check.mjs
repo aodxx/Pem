@@ -48,6 +48,14 @@ for (const closeoutLogic of ['openSaleDetail', 'saveLaborPayment', 'collectContr
 for (const closeoutUi of ['sale-detail-dialog','labor-payment-form','filter-work-mode','filter-contractor','filter-payment-status','filter-date-from','filter-date-to']) {
   if (!html.includes(`id="${closeoutUi}"`)) throw new Error(`Missing closeout feature UI: ${closeoutUi}`);
 }
+for (const privacyUi of ['profile-settings-button','toggle-api-url','toggle-access-token']) {
+  if (!html.includes(`id="${privacyUi}"`)) throw new Error(`Missing privacy/navigation UI: ${privacyUi}`);
+}
+if (html.includes('data-view="settings"')) throw new Error('Settings must not appear in bottom navigation');
+if ((html.match(/class="nav-item/g) || []).length !== 3) throw new Error('Bottom navigation must contain exactly three primary items');
+for (const privacyLogic of ['toggleSecretField','hideAllSecrets','visibilitychange','20000']) {
+  if (!app.includes(privacyLogic)) throw new Error(`Missing privacy behavior: ${privacyLogic}`);
+}
 if (!app.includes('<option value="all">ทุกปี</option>')) throw new Error('Missing all-years dashboard option');
 const ids = [...app.matchAll(/\$\(['"]#([a-zA-Z0-9_-]+)['"]\)/g)].map(match => match[1]);
 for (const id of new Set(ids)) {

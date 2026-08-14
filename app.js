@@ -13,6 +13,7 @@ const state = {
 const QUEUE_DB = 'palm-ledger-offline-v1';
 const QUEUE_STORE = 'pending-saves';
 let queueDbPromise;
+const secretRevealTimers = new Map();
 
 document.addEventListener('DOMContentLoaded', init);
 
@@ -28,15 +29,20 @@ function init() {
   if (state.accessToken) loadContractors().catch(() => {});
   window.addEventListener('online', () => { setSyncStatus('ออนไลน์ — กำลังตรวจรายการรอส่ง'); processPendingSaves(false); });
   window.addEventListener('offline', () => setSyncStatus('ออฟไลน์ — แบบร่างยังอยู่'));
+  document.addEventListener('visibilitychange', () => { if (document.hidden) hideAllSecrets(); });
 }
 
 function bindNavigation() {
   $$('.nav-item').forEach(button => button.addEventListener('click', () => showView(button.dataset.view)));
+  $('#profile-settings-button').addEventListener('click', () => showView('settings'));
 }
 
 async function showView(name) {
   $$('.view').forEach(view => view.classList.toggle('active', view.id === `view-${name}`));
   $$('.nav-item').forEach(button => button.classList.toggle('active', button.dataset.view === name));
+  $('#profile-settings-button').classList.toggle('active', name === 'settings');
+  $('#profile-settings-button').setAttribute('aria-current', name === 'settings' ? 'page' : 'false');
+  if (name !== 'settings') hideAllSecrets();
   window.scrollTo({ top: 0, behavior: 'smooth' });
   if (name === 'dashboard' && state.accessToken) await loadDashboard();
   if (name === 'history' && state.accessToken) await loadHistory();
@@ -370,6 +376,39 @@ function formatLaborRate(method, rate) {
 function bindSettings() {
   $('#save-settings').addEventListener('click', saveSettings);
   $('#retry-pending').addEventListener('click', () => processPendingSaves(true));
+  $('#toggle-api-url').addEventListener('click', () => toggleSecretField('api-url', 'toggle-api-url'));
+  $('#toggle-access-token').addEventListener('click', () => toggleSecretField('access-token', 'toggle-access-token'));
+}
+
+function toggleSecretField(fieldId, buttonId) {
+  const field = $(`#${fieldId}`);
+  const button = $(`#${buttonId}`);
+  const reveal = field.type === 'password';
+  field.type = reveal ? 'text' : 'password';
+  button.setAttribute('aria-pressed', reveal ? 'true' : 'false');
+  button.setAttribute('aria-label', `${reveal ? 'ซ่อน' : 'แสดง'} ${fieldId === 'api-url' ? 'Web App URL' : 'Access Token'}`);
+  button.querySelector('.eye-open').classList.toggle('hidden', reveal);
+  button.querySelector('.eye-closed').classList.toggle('hidden', !reveal);
+  clearTimeout(secretRevealTimers.get(fieldId));
+  if (reveal) secretRevealTimers.set(fieldId, setTimeout(() => hideSecret(fieldId, buttonId), 20000));
+}
+
+function hideSecret(fieldId, buttonId) {
+  const field = $(`#${fieldId}`);
+  const button = $(`#${buttonId}`);
+  if (!field || !button) return;
+  field.type = 'password';
+  button.setAttribute('aria-pressed', 'false');
+  button.setAttribute('aria-label', `แสดง ${fieldId === 'api-url' ? 'Web App URL' : 'Access Token'}`);
+  button.querySelector('.eye-open').classList.remove('hidden');
+  button.querySelector('.eye-closed').classList.add('hidden');
+  clearTimeout(secretRevealTimers.get(fieldId));
+  secretRevealTimers.delete(fieldId);
+}
+
+function hideAllSecrets() {
+  hideSecret('api-url', 'toggle-api-url');
+  hideSecret('access-token', 'toggle-access-token');
 }
 
 function bindFilters() {
@@ -898,6 +937,7 @@ async function saveSettings() {
     await loadContractors();
     const box = $('#connection-result'); box.className = 'notice success'; box.textContent = `เชื่อมต่อสำเร็จ — Backend ${health.version}`;
     toast('เชื่อมต่อระบบเรียบร้อยแล้ว');
+    hideAllSecrets();
     processPendingSaves(false);
   } catch (error) {
     const box = $('#connection-result'); box.className = 'notice error'; box.textContent = error.message; handleError(error);
