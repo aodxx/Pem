@@ -17,7 +17,7 @@
 9. Deploy เวอร์ชันใหม่โดยแก้ Deployment เดิม เพื่อรักษา Web App URL
 10. เปิด URL `?action=health` และตรวจว่า `status` เป็น `ready`
 11. รัน `runPhase1Tests()` และตรวจว่า `failed` เป็น `0`
-12. เผยแพร่หน้าแอป Frontend/PWA รุ่น `2.3.0`
+12. เผยแพร่หน้าแอป Frontend/PWA รุ่น `2.5.1`
 
 ## สิ่งที่ระบบทำให้อัตโนมัติ
 

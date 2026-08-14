@@ -1,54 +1,58 @@
-# Palm Yield Ledger — สมุดสวนปาล์ม
+# PALM LEDGER — สมุดสวนปาล์ม
 
-เว็บแอปส่วนตัวสำหรับถ่ายหรือเลือกรูปใบชั่งขายผลปาล์ม ให้ Gemini อ่านข้อมูลแบบ Structured JSON ตรวจแก้ก่อนบันทึก แล้วเก็บข้อมูลใน Google Sheets และรูปใน Google Drive
+เว็บแอปมือถือสำหรับอ่านใบชั่งขายปาล์มด้วย Gemini ตรวจข้อมูลก่อนบันทึก และจัดเก็บประวัติการขาย ค่าแรง รูปใบชั่ง และรายงานไว้ใน Google Sheets/Drive
 
-## Version 1
+- แอปที่ใช้งานจริง: <https://aodxx.github.io/Pem/>
+- Frontend/PWA: `2.5.1`
+- Apps Script Backend: `1.3.0`
+- API: `v1`
 
-- Mobile-first PWA ติดตั้งบน Android ได้
-- กล้องหลังและเลือกรูปจากเครื่อง
-- หมุน/ย่อรูปใน Browser ก่อนส่ง
-- Gemini Vision Structured Output พร้อม Confidence
-- Review Form ภาษาไทยก่อนบันทึก
-- ตรวจน้ำหนัก ยอดเงิน และรายการหัก
-- Duplicate Detection พร้อมยืนยัน override
-- เก็บรูปตามปี/เดือนใน Google Drive
-- Sales, Deductions, Buyers, OCRRuns, AuditTrail และ Logs
-- ประวัติ ค้นหา กรองรายเดือน และแก้ไขย้อนหลัง
-- Dashboard ผลผลิต รายได้ ราคาเฉลี่ย กราฟรายเดือน และเปรียบเทียบลานรับซื้อ
-- Access Token ส่วนตัวโดยไม่ฝัง Secret ใน Frontend
-- Offline App Shell และเก็บแบบร่างในเครื่อง
+## เริ่มพัฒนาใน 3 คำสั่ง
 
-## Production resources
-
-- Apps Script Project ID: `1PzG5lE7bxpSMSyO_BOBx9DGuFTZMTw_7mBV7o12c6HoWMKqzLlmwaGaz`
-- Apps Script Deployment: `https://script.google.com/macros/s/AKfycbwttI8iFWVls788jXX-nV_7MZsFvwGkwDaIU3JdfcmEqH9zYYzQ5pxGeSza6NLJqmxQGA/exec`
-- Google Spreadsheet ID: `1S5WtdhsVUOQ5APZ_EiBKSZBTeyi6VKnVLeaGbWPBAPc`
-- Timezone: `Asia/Bangkok`
-- Expected PWA URL: `https://aodxx.github.io/Pem/`
-
-## Deploy Backend
-
-1. เปิด Apps Script Project
-2. แทนที่ `Code.gs` ด้วย `apps-script/Code.gs`
-3. แทนที่ `appsscript.json` ด้วย `apps-script/appsscript.json`
-4. Run `setupV1()` แล้วเก็บ `accessToken` ที่แสดงหนึ่งครั้ง
-5. Run `runV1SmokeTests()` ต้องได้ `ok: true`
-6. Run `testGeminiReceiptFromDrive()` เพื่อทดสอบภาพตัวอย่างจริง
-7. Deploy > Manage deployments > Edit > New version > Deploy เพื่อคง URL เดิม
-
-## Deploy Frontend
-
-Workflow `.github/workflows/deploy-pages.yml` เผยแพร่โฟลเดอร์ `frontend` เมื่อ merge เข้า `main`. ตั้ง GitHub Pages Source เป็น **GitHub Actions** หนึ่งครั้ง จากนั้นเปิด PWA URL และใส่ Access Token ที่ได้จาก `setupV1()`.
-
-## Security
-
-Gemini API Key และ Access Token ไม่อยู่ใน Repository. API Key อยู่ใน Apps Script Script Properties; Backend เก็บเฉพาะ SHA-256 ของ Access Token. Frontend เก็บ Token เฉพาะใน `localStorage` ของอุปกรณ์ผู้ใช้.
-
-## Tests
+ต้องมี Git และ Node.js 20 ขึ้นไป ไม่ต้องติดตั้ง package เพิ่ม
 
 ```bash
-node --check frontend/app.js
-node --check frontend/sw.js
-node tests/static-check.mjs
-node tests/backend-unit.mjs
+git clone https://github.com/aodxx/Pem.git
+cd Pem
+npm run check
+npm run dev
 ```
+
+จากนั้นเปิด <http://127.0.0.1:4173> การแก้ไฟล์แล้วรีเฟรชหน้าเว็บจะเห็นผลทันที
+
+## โครงสร้างที่ต้องรู้
+
+```text
+frontend/              หน้าเว็บจริงที่ GitHub Pages เผยแพร่
+apps-script/Code.gs    Backendจริงทั้งระบบในไฟล์เดียว
+apps-script/appsscript.json
+tests/                 Static checks และ unit tests
+scripts/               เครื่องมือสำหรับพัฒนาในเครื่อง
+docs/                  API, การติดตั้ง, schema และสถานะโครงการ
+schemas/               JSON Schema สำหรับ Gemini OCR
+```
+
+กติกาสำคัญ: แก้หน้าเว็บใน `frontend/` เท่านั้น และแก้ Backend ใน `apps-script/Code.gs` เท่านั้น ไม่มีสำเนาโค้ดใช้งานจริงที่ root ของ Repository
+
+## การตั้งค่า
+
+`frontend/config.js` เก็บ Web App URL และเวอร์ชันของหน้าเว็บ โดย URL นี้ไม่ใช่รหัสลับ ส่วน Access Token ผู้ใช้ต้องกรอกผ่านหน้าตั้งค่าในแอปและระบบจะเก็บไว้เฉพาะใน `localStorage` ของอุปกรณ์
+
+ห้าม commit Gemini API Key, Access Token, ไฟล์ `.clasp.json` หรือ credential ทุกชนิด ดูตัวอย่างค่า Clasp ได้ที่ `apps-script/.clasp.json.example`
+
+## ทดสอบ
+
+```bash
+npm run check          # ตรวจ syntax, โครงสร้าง, secrets และ unit tests ทั้งหมด
+npm run check:syntax   # ตรวจ syntaxฝั่งหน้าเว็บ
+npm test               # รันชุดทดสอบของโครงการ
+```
+
+Pull request ทุกอันจะรันชุดตรวจเดียวกันผ่าน GitHub Actions โดยอัตโนมัติ
+
+## การเผยแพร่
+
+- Frontend: เมื่อ merge การเปลี่ยนแปลงใน `frontend/` เข้า `main` ระบบจะตรวจสอบและเผยแพร่ผ่าน GitHub Pages อัตโนมัติ
+- Backend: คัดลอก `apps-script/Code.gs` และ manifest เข้า Apps Script Project เดิม ทดสอบ แล้วแก้ Deployment เดิมเป็นเวอร์ชันใหม่เพื่อรักษา URL
+
+อ่านขั้นตอนละเอียดที่ [คู่มือการติดตั้ง](docs/INSTALL.md), [แนวทางร่วมพัฒนา](CONTRIBUTING.md), [สถาปัตยกรรม](ARCHITECTURE.md) และ [สถานะโครงการ](docs/PROGRESS.md)

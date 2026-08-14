@@ -1,0 +1,16 @@
+node_modules/
+coverage/
+dist/
+.cache/
+*.log
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.tmp
+.env
+.env.*
+!.env.example
+.clasp.json
+apps-script/.clasp.json

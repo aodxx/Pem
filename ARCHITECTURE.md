@@ -4,9 +4,9 @@
 flowchart TD
   A["Mobile PWA<br/>GitHub Pages"] --> B["Apps Script Web App<br/>API + Access Token"]
   B --> C["Gemini Vision<br/>Structured JSON"]
-  B --> D["Google Sheets<br/>7 relational-style tabs"]
+  B --> D["Google Sheets<br/>11 relational-style tabs"]
   B --> E["Google Drive<br/>Receipts/YYYY/MM"]
-  A --> F["Local Storage<br/>Token + Draft"]
+  A --> F["Local Storage + IndexedDB<br/>Token, Draft, Pending saves"]
 ```
 
 ## Frontend
@@ -14,14 +14,14 @@ flowchart TD
 - Vanilla HTML/CSS/JS ใน `frontend/`
 - Mobile-first, กล้องหลัง, Gallery, Preview, Rotate, client-side resize
 - Review Form ก่อนบันทึก, Manual entry, History/Edit, Dashboard
-- Service Worker cache เฉพาะ App Shell; OCR/Save ต้องออนไลน์
+- Service Worker cache เฉพาะ App Shell; รายการที่บันทึกขณะเครือข่ายมีปัญหาจะเข้าคิวใน IndexedDB และส่งซ้ำเมื่อออนไลน์
 - Access Token เก็บในอุปกรณ์ผู้ใช้ ไม่มี Gemini Key หรือ Google Secret
 - POST `text/plain` เพื่อหลีกเลี่ยง CORS preflight กับ Apps Script
 
 ## Backend
 
 - Release เดียว `apps-script/Code.gs` เพื่อให้วางใน Apps Script ได้โดยไม่สร้างหลายไฟล์
-- Router, standardized response, logs, Sheet repository, Drive storage, Gemini, validation, duplicate, sales, buyers, dashboard
+- Router, standardized response, logs, Sheet repository, Drive storage, Gemini, validation, duplicate, sales, buyers, dashboard, contractors และ labor payments
 - Apps Script `LockService` ป้องกัน create ชนกัน
 - `idempotencyKey` ป้องกันกดบันทึกซ้ำจากเครือข่ายมือถือ
 - Update ใช้ `expectedUpdatedAt`; Void ไม่ลบ Sales row
@@ -36,7 +36,7 @@ flowchart TD
 
 ## Data
 
-- Sales, Deductions, Buyers, OCRRuns, AuditTrail, Logs, Settings
+- Sales, Deductions, Buyers, Contractors, LaborEntries, LaborPayments, SchemaMigrations, OCRRuns, AuditTrail, Logs, Settings
 - น้ำหนักเป็นกิโลกรัม เงินเป็นบาท วันที่ภายในใช้ `YYYY-MM-DD`, Timezone `Asia/Bangkok`
 - Dashboard คำนวณเฉพาะ Sales ที่ไม่ใช่ `VOID`
 - Buyer ถูกสร้างอัตโนมัติจากชื่อ+สาขาที่ normalized

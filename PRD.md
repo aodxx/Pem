@@ -944,10 +944,10 @@ Phase 7 — Production Testing
 - README.md
 - PRD.md
 - ARCHITECTURE.md
-- API.md
-- PROGRESS.md
+- docs/API.md
+- docs/PROGRESS.md
 
-PROGRESS.md ต้องใช้ติดตาม:
+docs/PROGRESS.md ต้องใช้ติดตาม:
 
 - Phase ปัจจุบัน
 - สิ่งที่เสร็จแล้ว

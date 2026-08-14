@@ -46,7 +46,7 @@ const manifestWeb = JSON.parse(fs.readFileSync('frontend/manifest.webmanifest', 
 for (const icon of manifestWeb.icons) {
   if (!fs.existsSync(`frontend/${icon.src}`)) throw new Error(`Missing PWA icon: ${icon.src}`);
 }
-for (const file of ['frontend/styles.css','frontend/sw.js','frontend/icons/icon.svg']) {
+for (const file of ['frontend/styles-v2.css','frontend/sw.js','frontend/icons/icon.svg']) {
   if (!fs.existsSync(file)) throw new Error(`Missing frontend asset: ${file}`);
 }
 
@@ -57,4 +57,3 @@ console.log(JSON.stringify({
   requiredFunctions: requiredFunctions.length,
   pwaIcons: manifestWeb.icons.length
 }, null, 2));
-

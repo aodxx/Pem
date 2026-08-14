@@ -74,7 +74,7 @@
 
 ## Closeout status
 
-- Development scope in `next-features.md`: **Complete**
+- Development scope in `docs/NEXT_FEATURES.md`: **Complete**
 - Remaining activity after deployment: owner acceptance check on the next real sale (no code task remains)
 
 ## Resources

@@ -1,23 +1,11 @@
-# Frontend
+# Frontend PWA
 
-พื้นที่สำหรับ Mobile-first PWA ที่เผยแพร่ผ่าน GitHub Pages
+โฟลเดอร์นี้คือหน้าเว็บที่ใช้งานจริงและเป็น artifact ที่ GitHub Pages เผยแพร่
 
-โครงสร้างที่วางไว้:
+- เริ่ม local server จาก root ด้วย `npm run dev`
+- ตรวจทั้งหมดด้วย `npm run check`
+- แก้ API URL/เวอร์ชันที่ `config.js`
+- เมื่อแก้ App Shell ให้เพิ่ม cache version ใน `sw.js` เพื่อให้อุปกรณ์รับไฟล์ใหม่
+- เก็บ assets ที่ใช้งานจริงไว้ในโฟลเดอร์นี้เท่านั้น ห้ามสร้างสำเนาที่ root
 
-```text
-frontend/
-├── index.html
-├── manifest.webmanifest
-├── service-worker.js
-├── assets/
-├── src/
-│   ├── api/
-│   ├── components/
-│   ├── pages/
-│   ├── storage/
-│   ├── styles/
-│   └── utils/
-└── tests/
-```
-
-เริ่ม implementation ใน Phase 4 หลัง API/OCR contract ผ่าน integration test.
+Access Token ไม่ได้อยู่ใน source code ผู้ใช้กรอกผ่านหน้าตั้งค่าและเก็บไว้ในอุปกรณ์ของตนเอง
