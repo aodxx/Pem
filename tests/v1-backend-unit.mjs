@@ -84,3 +84,4 @@ const pendingStatus = context.getSaleSaveStatus_('pending-key');
 if (!savedStatus.saved || savedStatus.sale.SaleID !== 'SALE_SAVED' || pendingStatus.saved) throw new Error('Save status lookup failed');
 
 console.log(JSON.stringify({ ok: true, validationWarnings: mismatch.warnings.length, duplicateScore: duplicates[0].score, summary, saveStatus: savedStatus.state }, null, 2));
+

@@ -6,7 +6,7 @@ const $$ = selector => Array.from(document.querySelectorAll(selector));
 const state = {
   accessToken: localStorage.getItem('palmAccessToken') || '', originalDataUrl: '', previewDataUrl: '', rotation: 0,
   source: 'MANUAL', receipt: null, ocrRunId: '', model: '', editingSaleId: '', expectedUpdatedAt: '', installPrompt: null,
-  syncInProgress: false, viewingSaleId: ''
+  syncInProgress: false, viewingSaleId: '', contractors: [], pendingContractorRow: null
 };
 
 const QUEUE_DB = 'palm-ledger-offline-v1';
@@ -19,7 +19,7 @@ function init() {
   $('#api-url').value = CONFIG.apiUrl;
   $('#access-token').value = state.accessToken;
   $('#app-version').textContent = CONFIG.version;
-  bindNavigation(); bindCapture(); bindForm(); bindSettings(); bindFilters(); setupInstall();
+  bindNavigation(); bindCapture(); bindForm(); bindLabor(); bindSettings(); bindFilters(); setupInstall();
   bindReceiptViewer();
   populateYears(); updateConnectionUI(); restoreDraft();
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js').catch(() => {});
@@ -56,6 +56,226 @@ function bindForm() {
   $('#sale-form').addEventListener('input', () => {
     calculateAmounts(); saveDraft();
   });
+}
+
+function bindLabor() {
+  $('#set-self-managed').addEventListener('click', () => setSelfManaged());
+  $('#add-team-labor').addEventListener('click', () => addLaborEntry('TEAM'));
+  $('#add-individual-labor').addEventListener('click', () => addLaborEntry('INDIVIDUAL'));
+  $('#labor-entries-list').addEventListener('input', event => {
+    const row = event.target.closest('.labor-entry-row');
+    if (row) { updateLaborRow(row); calculateLaborTotals(); saveDraft(); }
+  });
+  $('#labor-entries-list').addEventListener('change', event => {
+    const row = event.target.closest('.labor-entry-row');
+    if (!row) return;
+    if (event.target.classList.contains('labor-contractor-select')) {
+      if (event.target.value === '__new__') openContractorDialog(row.dataset.workMode, row);
+      else applyContractorToRow(row, event.target.value);
+    }
+    updateLaborRow(row); calculateLaborTotals(); saveDraft();
+  });
+  $('#labor-entries-list').addEventListener('click', event => {
+    const row = event.target.closest('.labor-entry-row');
+    if (!row) return;
+    if (event.target.closest('.remove-labor-entry')) {
+      row.remove(); calculateLaborTotals(); saveDraft();
+    }
+    if (event.target.closest('.add-contractor-inline')) openContractorDialog(row.dataset.workMode, row);
+  });
+  $('#close-contractor-dialog').addEventListener('click', closeContractorDialog);
+  $('#cancel-contractor').addEventListener('click', closeContractorDialog);
+  $('#contractor-method').addEventListener('change', updateContractorDialogFields);
+  $('#contractor-form').addEventListener('submit', saveContractor);
+}
+
+function prepareLaborUI(entries = []) {
+  $('#labor-entries-list').innerHTML = '';
+  (entries || []).filter(item => String(item.RecordStatus || 'ACTIVE') !== 'VOID').forEach(item => {
+    addLaborEntry(String(item.WorkMode || item.workMode || 'SELF').toUpperCase(), item, false);
+  });
+  calculateLaborTotals();
+}
+
+function setSelfManaged() {
+  $('#labor-entries-list').innerHTML = '';
+  addLaborEntry('SELF');
+}
+
+function addLaborEntry(mode, item = {}, persist = true) {
+  const normalizedMode = String(mode || '').toUpperCase();
+  if (normalizedMode === 'SELF') $('#labor-entries-list').innerHTML = '';
+  else $$('#labor-entries-list .labor-entry-row[data-work-mode="SELF"]').forEach(row => row.remove());
+  const row = document.createElement('article');
+  row.className = 'labor-entry-row';
+  row.dataset.workMode = normalizedMode;
+  row.dataset.entryId = item.LaborEntryID || item.laborEntryId || '';
+  if (normalizedMode === 'SELF') {
+    row.innerHTML = `<div class="labor-entry-heading"><div><strong>จัดการเอง</strong><small>ไม่มีค่าแรงสำหรับรอบนี้</small></div><button class="remove-labor-entry" type="button" aria-label="ลบ">×</button></div><input class="labor-notes" type="hidden" value="">`;
+  } else {
+    const typeLabel = normalizedMode === 'TEAM' ? 'ทีมแทง' : 'บุคคล';
+    const defaultMethod = normalizedMode === 'TEAM' ? 'PER_KG' : 'PER_PERSON';
+    const method = item.CalculationMethod || item.calculationMethod || defaultMethod;
+    const rate = item.RateSnapshot ?? item.rateSnapshot ?? '';
+    const headcount = item.Headcount ?? item.headcount ?? '';
+    const contractorId = item.ContractorID || item.contractorId || '';
+    const contractorName = item.ContractorNameSnapshot || item.contractorName || '';
+    row.innerHTML = `<div class="labor-entry-heading"><div><strong>จ้าง${typeLabel}</strong><small>${normalizedMode === 'TEAM' ? 'คำนวณจากน้ำหนักสุทธิ' : 'คำนวณจากจำนวนคน'}</small></div><button class="remove-labor-entry" type="button" aria-label="ลบ">×</button></div>
+      <div class="contractor-picker"><label>เลือก${typeLabel}ที่เคยใช้<select class="labor-contractor-select">${renderContractorOptions(normalizedMode, contractorId, contractorName)}</select></label><button class="add-contractor-inline" type="button">＋ เพิ่มชื่อใหม่</button></div>
+      <div class="labor-rate-grid">
+        <label>วิธีคิด<select class="labor-method"><option value="PER_KG">ตามน้ำหนัก</option><option value="PER_PERSON">ตามจำนวนคน</option></select></label>
+        <label>อัตราค่าแรง<input class="labor-rate" type="number" min="0" step="0.01" inputmode="decimal" value="${escapeHtml(rate)}"></label>
+        <label class="labor-weight-wrap">น้ำหนักสุทธิ<input class="labor-weight" type="number" readonly></label>
+        <label class="labor-headcount-wrap">จำนวนคน<input class="labor-headcount" type="number" min="1" step="1" inputmode="numeric" value="${escapeHtml(headcount)}"></label>
+      </div>
+      <label>หมายเหตุ<input class="labor-notes" value="${escapeHtml(item.Notes || item.notes || '')}" placeholder="ไม่บังคับ"></label>
+      <div class="labor-row-total"><span>ค่าแรงรายการนี้</span><strong class="labor-cost">฿0</strong></div>`;
+    row.querySelector('.labor-method').value = method;
+  }
+  $('#labor-entries-list').appendChild(row);
+  updateLaborRow(row); calculateLaborTotals();
+  if (persist) saveDraft();
+  if (normalizedMode !== 'SELF' && !state.contractors.some(contractor => contractor.ContractorType === normalizedMode)) {
+    openContractorDialog(normalizedMode, row);
+  }
+  return row;
+}
+
+function renderContractorOptions(mode, selectedId = '', snapshotName = '') {
+  const items = state.contractors.filter(item => String(item.ContractorType).toUpperCase() === mode);
+  let html = '<option value="">— เลือกชื่อ —</option>';
+  if (selectedId && !items.some(item => String(item.ContractorID) === String(selectedId))) {
+    html += `<option value="${escapeHtml(selectedId)}" selected>${escapeHtml(snapshotName || 'ข้อมูลเดิม')}</option>`;
+  }
+  html += items.map(item => `<option value="${escapeHtml(item.ContractorID)}"${String(item.ContractorID) === String(selectedId) ? ' selected' : ''}>${escapeHtml(item.Name)} • ${formatLaborRate(item.CalculationMethod, item.DefaultRate)}</option>`).join('');
+  return html + '<option value="__new__">＋ เพิ่มชื่อใหม่</option>';
+}
+
+async function loadContractors() {
+  if (!state.accessToken) return [];
+  const items = await api('contractors.list', {}, true, { timeoutMs: 20000 });
+  state.contractors = Array.isArray(items) ? items : [];
+  $$('.labor-contractor-select').forEach(select => {
+    const selected = select.value;
+    const row = select.closest('.labor-entry-row');
+    select.innerHTML = renderContractorOptions(row.dataset.workMode, selected, 'ข้อมูลเดิม');
+    if (selected) select.value = selected;
+  });
+  return state.contractors;
+}
+
+function applyContractorToRow(row, contractorId) {
+  const contractor = state.contractors.find(item => String(item.ContractorID) === String(contractorId));
+  if (!contractor) return;
+  row.querySelector('.labor-method').value = contractor.CalculationMethod || (row.dataset.workMode === 'TEAM' ? 'PER_KG' : 'PER_PERSON');
+  row.querySelector('.labor-rate').value = valueForInput(contractor.DefaultRate);
+  if (row.querySelector('.labor-headcount') && contractor.DefaultHeadcount) row.querySelector('.labor-headcount').value = contractor.DefaultHeadcount;
+}
+
+function updateLaborRow(row) {
+  if (row.dataset.workMode === 'SELF') return;
+  const method = row.querySelector('.labor-method').value;
+  const payable = numberOrNull($('#sale-form').elements.payableWeightKg.value);
+  const net = numberOrNull($('#sale-form').elements.netWeightKg.value);
+  const weight = payable ?? net ?? 0;
+  row.querySelector('.labor-weight').value = weight || '';
+  row.querySelector('.labor-weight-wrap').classList.toggle('hidden', method !== 'PER_KG');
+  row.querySelector('.labor-headcount-wrap').classList.toggle('hidden', method !== 'PER_PERSON');
+  const rate = numberOrNull(row.querySelector('.labor-rate').value) || 0;
+  const headcount = numberOrNull(row.querySelector('.labor-headcount').value) || 0;
+  const cost = method === 'PER_KG' ? round2(weight * rate) : round2(headcount * rate);
+  row.dataset.laborCost = String(cost);
+  row.querySelector('.labor-cost').textContent = formatMoney(cost);
+}
+
+function calculateLaborTotals() {
+  $$('#labor-entries-list .labor-entry-row').forEach(updateLaborRow);
+  const rows = $$('#labor-entries-list .labor-entry-row');
+  const total = round2(rows.reduce((sum, row) => sum + Number(row.dataset.laborCost || 0), 0));
+  const net = numberOrNull($('#sale-form').elements.netAmount.value) || 0;
+  $('#labor-entry-count').textContent = rows.length ? `${rows.length} รายการ` : 'ยังไม่เลือก';
+  $('#labor-sale-net').textContent = formatMoney(net);
+  $('#labor-total-cost').textContent = formatMoney(total);
+  $('#labor-net-after').textContent = formatMoney(net - total);
+  return { total, netAfterLabor: round2(net - total) };
+}
+
+function collectLaborEntries(allowEmpty = false, allowIncomplete = false) {
+  const rows = $$('#labor-entries-list .labor-entry-row');
+  if (!rows.length && !allowEmpty) throw appError('LABOR_REQUIRED', 'กรุณาเลือกว่า “จัดการเอง”, “จ้างทีมแทง” หรือ “จ้างบุคคล”');
+  return rows.map(row => {
+    const workMode = row.dataset.workMode;
+    if (workMode === 'SELF') return { laborEntryId: row.dataset.entryId || '', workMode: 'SELF', notes: '' };
+    const contractorId = row.querySelector('.labor-contractor-select').value;
+    if ((!contractorId || contractorId === '__new__') && !allowIncomplete) throw appError('CONTRACTOR_REQUIRED', 'กรุณาเลือกหรือเพิ่มชื่อทีมงาน/บุคคล');
+    const calculationMethod = row.querySelector('.labor-method').value;
+    const rateSnapshot = numberOrNull(row.querySelector('.labor-rate').value);
+    const headcount = numberOrNull(row.querySelector('.labor-headcount').value) || 0;
+    const weightKgSnapshot = numberOrNull(row.querySelector('.labor-weight').value) || 0;
+    if ((rateSnapshot === null || rateSnapshot < 0) && !allowIncomplete) throw appError('INVALID_RATE', 'กรุณาระบุอัตราค่าแรงให้ถูกต้อง');
+    if (calculationMethod === 'PER_PERSON' && headcount < 1 && !allowIncomplete) throw appError('INVALID_HEADCOUNT', 'กรุณาระบุจำนวนคน');
+    return { laborEntryId: row.dataset.entryId || '', workMode, contractorId: contractorId === '__new__' ? '' : contractorId, calculationMethod,
+      weightKgSnapshot, headcount, rateSnapshot, notes: row.querySelector('.labor-notes').value.trim() };
+  });
+}
+
+function openContractorDialog(mode, row) {
+  if (!ensureConnected()) return;
+  state.pendingContractorRow = row;
+  const type = mode === 'INDIVIDUAL' ? 'INDIVIDUAL' : 'TEAM';
+  $('#contractor-type').value = type;
+  $('#contractor-dialog-title').textContent = type === 'TEAM' ? 'เพิ่มทีมแทง' : 'เพิ่มบุคคล';
+  $('#contractor-name').value = '';
+  $('#contractor-method').value = type === 'TEAM' ? 'PER_KG' : 'PER_PERSON';
+  $('#contractor-rate').value = '';
+  $('#contractor-headcount').value = '';
+  $('#contractor-phone').value = '';
+  $('#contractor-notes').value = '';
+  updateContractorDialogFields();
+  const dialog = $('#contractor-dialog');
+  if (typeof dialog.showModal === 'function') dialog.showModal(); else dialog.setAttribute('open', '');
+}
+
+function closeContractorDialog() {
+  const dialog = $('#contractor-dialog');
+  if (typeof dialog.close === 'function') dialog.close(); else dialog.removeAttribute('open');
+  const select = state.pendingContractorRow?.querySelector('.labor-contractor-select');
+  if (select?.value === '__new__') select.value = '';
+  state.pendingContractorRow = null;
+}
+
+function updateContractorDialogFields() {
+  $('#contractor-headcount-label').classList.toggle('hidden', $('#contractor-method').value !== 'PER_PERSON');
+}
+
+async function saveContractor(event) {
+  event.preventDefault();
+  const contractorType = $('#contractor-type').value;
+  setLoading(true, 'กำลังบันทึกรายชื่อ…');
+  try {
+    const contractor = await api('contractors.create', { contractor: {
+      contractorType, name: $('#contractor-name').value.trim(), calculationMethod: $('#contractor-method').value,
+      defaultRate: numberOrNull($('#contractor-rate').value) || 0,
+      defaultHeadcount: numberOrNull($('#contractor-headcount').value) || 0,
+      phone: $('#contractor-phone').value.trim(), notes: $('#contractor-notes').value.trim()
+    } }, true, { timeoutMs: 30000 });
+    state.contractors.push(contractor);
+    const row = state.pendingContractorRow;
+    closeContractorDialog();
+    if (row?.isConnected) {
+      const select = row.querySelector('.labor-contractor-select');
+      select.innerHTML = renderContractorOptions(contractorType, contractor.ContractorID, contractor.Name);
+      select.value = contractor.ContractorID;
+      applyContractorToRow(row, contractor.ContractorID);
+      updateLaborRow(row); calculateLaborTotals(); saveDraft();
+    }
+    toast('บันทึกรายชื่อแล้ว รอบต่อไปเลือกใช้ได้ทันที');
+  } catch (error) { handleError(error); }
+  finally { setLoading(false); }
+}
+
+function formatLaborRate(method, rate) {
+  return method === 'PER_KG' ? `${formatNumber(rate, 2)} บ./กก.` : `${formatNumber(rate, 0)} บ./คน`;
 }
 
 function bindSettings() {
@@ -138,7 +358,7 @@ function openManualForm() {
   openReview(state.receipt, [], { warnings: [] }, false);
 }
 
-function openReview(receipt, lowFields, validation, editing) {
+function openReview(receipt, lowFields, validation, editing, laborEntries = []) {
   state.receipt = receipt;
   $('#review-title').textContent = editing ? 'แก้ไขรายการขาย' : (state.source === 'MANUAL' ? 'เพิ่มข้อมูลด้วยตนเอง' : 'ข้อมูลจากใบชั่ง');
   const confidence = Math.round(Number(receipt.overallConfidence || 0) * 100);
@@ -147,6 +367,8 @@ function openReview(receipt, lowFields, validation, editing) {
   $$('#sale-form [name]').forEach(input => { if (input.name !== 'deductionType' && input.name !== 'deductionAmount') input.value = valueForInput(receipt[input.name]); });
   $('#deductions-list').innerHTML = '';
   (receipt.deductions || []).forEach(addDeductionRow);
+  prepareLaborUI(laborEntries);
+  loadContractors().catch(() => {});
   $$('#sale-form label').forEach(label => label.classList.remove('low-confidence'));
   lowFields.forEach(field => { const input = $(`#sale-form [name="${cssEscape(field)}"]`); if (input) input.closest('label').classList.add('low-confidence'); });
   showValidation(validation || { warnings: [] });
@@ -174,6 +396,7 @@ function calculateAmounts() {
   if (total || !form.elements.totalDeduction.value) form.elements.totalDeduction.value = round2(total);
   const gross = numberOrNull(form.elements.grossAmount.value);
   if (gross !== null) form.elements.netAmount.value = round2(gross - (numberOrNull(form.elements.totalDeduction.value) || 0));
+  calculateLaborTotals();
 }
 
 function collectReceipt() {
@@ -202,10 +425,13 @@ async function saveSale(event, duplicateOverride = false) {
   event?.preventDefault();
   if (!ensureConnected()) return;
   const sale = collectReceipt();
+  let laborEntries;
+  try { laborEntries = collectLaborEntries(); }
+  catch (error) { handleError(error); $('#labor-fieldset').scrollIntoView({ behavior: 'smooth', block: 'start' }); return; }
   if (state.editingSaleId) {
     setLoading(true, 'กำลังบันทึกการแก้ไข…');
     try {
-      const data = await api('sales.update', { saleId: state.editingSaleId, expectedUpdatedAt: state.expectedUpdatedAt, sale }, true, { timeoutMs: 45000 });
+      const data = await api('sales.update', { saleId: state.editingSaleId, expectedUpdatedAt: state.expectedUpdatedAt, sale, laborEntries }, true, { timeoutMs: 45000 });
       localStorage.removeItem('palmDraft'); resetCapture();
       toast(data.updated ? 'แก้ไขข้อมูลเรียบร้อยแล้ว' : 'บันทึกเรียบร้อยแล้ว');
       await showView('history');
@@ -227,7 +453,7 @@ async function saveSale(event, duplicateOverride = false) {
       attempts: 0,
       status: 'pending',
       lastError: '',
-      payload: { sale, image, source: state.source, ocrRunId: state.ocrRunId, model: state.model,
+      payload: { sale, laborEntries, image, source: state.source, ocrRunId: state.ocrRunId, model: state.model,
         idempotencyKey, duplicateOverride }
     });
     localStorage.removeItem('palmDraft');
@@ -248,7 +474,7 @@ function resetCapture() {
   Object.assign(state, { originalDataUrl: '', previewDataUrl: '', rotation: 0, source: 'MANUAL', receipt: null,
     ocrRunId: '', model: '', editingSaleId: '', expectedUpdatedAt: '' });
   $('#preview-panel').classList.add('hidden'); $('#review-panel').classList.add('hidden'); $('#sale-form').reset();
-  $('#deductions-list').innerHTML = ''; localStorage.removeItem('palmDraft');
+  $('#deductions-list').innerHTML = ''; $('#labor-entries-list').innerHTML = ''; localStorage.removeItem('palmDraft');
 }
 
 async function loadDashboard() {
@@ -265,8 +491,11 @@ async function loadDashboard() {
     updateDashboardYears(data.availableYears || [], data.year || selectedYear);
     const allYears = Boolean(data.allYears || data.year === 'all');
     $('#sum-weight-label').textContent = allYears ? 'ผลผลิตทั้งหมด' : `ผลผลิตปี ${Number(data.year) + 543}`;
-    $('#sum-revenue-label').textContent = allYears ? 'รายได้ทั้งหมด' : `รายได้ปี ${Number(data.year) + 543}`;
-    $('#sum-weight').textContent = formatNumber(data.totalWeightTon, 2); $('#sum-revenue').textContent = formatMoney(data.totalRevenue);
+    $('#sum-revenue-label').textContent = allYears ? 'คงเหลือหลังค่าแรงทั้งหมด' : `คงเหลือหลังค่าแรงปี ${Number(data.year) + 543}`;
+    $('#sum-weight').textContent = formatNumber(data.totalWeightTon, 2); $('#sum-revenue').textContent = formatMoney(data.netAfterLabor);
+    $('#sum-labor').textContent = formatMoney(data.totalLaborCost);
+    $('#sum-labor-balance').textContent = `ค้างจ่าย ${formatMoney(data.laborBalanceDue)}`;
+    $('#sum-gross-revenue').textContent = formatMoney(data.totalRevenue);
     $('#sum-price').textContent = formatNumber(data.averagePricePerKg, 2); $('#sum-count').textContent = formatNumber(data.saleCount, 0);
     renderMonthlyChart(data.monthlySeries || []); renderBuyers(data.buyerComparison || []);
   } catch (error) { handleError(error); } finally { setLoading(false); }
@@ -281,7 +510,7 @@ function renderMonthlyChart(series) {
 function renderBuyers(items) {
   const container = $('#buyer-comparison');
   container.classList.toggle('empty', !items.length);
-  container.innerHTML = items.length ? items.map(item => `<article class="buyer-row"><strong>${escapeHtml(item.buyerName)}</strong><span>${formatNumber(item.totalWeightKg, 0)} กก. • ${item.saleCount} ครั้ง</span><b>${formatMoney(item.totalRevenue)}</b></article>`).join('') : 'ยังไม่มีข้อมูล';
+  container.innerHTML = items.length ? items.map(item => `<article class="buyer-row"><strong>${escapeHtml(item.buyerName)}</strong><span>${formatNumber(item.totalWeightKg, 0)} กก. • ${item.saleCount} ครั้ง • ค่าแรง ${formatMoney(item.totalLaborCost)}</span><b>${formatMoney(item.netAfterLabor ?? item.totalRevenue)}</b></article>`).join('') : 'ยังไม่มีข้อมูล';
 }
 
 async function loadHistory() {
@@ -325,12 +554,15 @@ function renderHistory(items, pending = []) {
 
 function renderPendingHistoryCard(job, latestBadge) {
   const sale = job.payload?.sale || {};
-  return `<article class="history-card pending"><div class="history-main"><div><div class="history-date-row"><h3>${escapeHtml(formatThaiDate(sale.saleDate))}</h3>${latestBadge}</div><p>${escapeHtml(sale.buyerName || 'ไม่ระบุลาน')} • ${formatNumber(sale.netWeightKg, 0)} กก.</p><p>ใบชั่ง ${escapeHtml(sale.receiptNumber || '—')}</p></div><div class="amount"><strong>เก็บไว้แล้ว</strong><small>${job.status === 'blocked' ? 'รอยืนยันรายการซ้ำ' : 'กำลังส่งอัตโนมัติ'}</small></div></div></article>`;
+  const labor = clientLaborSummary(job.payload?.laborEntries || [], sale);
+  return `<article class="history-card pending"><div class="history-main"><div><div class="history-date-row"><h3>${escapeHtml(formatThaiDate(sale.saleDate))}</h3>${latestBadge}</div><p>${escapeHtml(sale.buyerName || 'ไม่ระบุลาน')} • ${formatNumber(sale.netWeightKg, 0)} กก.</p><p>ค่าแรง ${formatMoney(labor.totalLaborCost)} • คงเหลือ ${formatMoney(labor.netAfterLabor)}</p></div><div class="amount"><strong>เก็บไว้แล้ว</strong><small>${job.status === 'blocked' ? 'รอยืนยันรายการซ้ำ' : 'กำลังส่งอัตโนมัติ'}</small></div></div></article>`;
 }
 
 function renderSavedHistoryCard(item, latestBadge) {
     const imageButton = item.ImageFileID ? `<button class="history-action view-receipt" type="button" data-sale-id="${escapeHtml(item.SaleID)}" data-file-id="${escapeHtml(item.ImageFileID)}" data-drive-url="${escapeHtml(item.imageUrl || '')}" data-meta="${escapeHtml(`ใบชั่ง ${item.ReceiptNumber || '—'} • ${formatThaiDate(item.SaleDate)}`)}"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3Z"/><circle cx="12" cy="13" r="3"/></svg> ดูภาพใบชั่ง</button>` : `<span class="no-receipt-image">ไม่มีรูปภาพ</span>`;
-  return `<article class="history-card" data-sale-id="${escapeHtml(item.SaleID)}"><div class="history-main"><div><div class="history-date-row"><h3>${escapeHtml(formatThaiDate(item.SaleDate))}</h3>${latestBadge}</div><p>${escapeHtml(item.BuyerNameRaw || 'ไม่ระบุลาน')} • ${formatNumber(item.NetWeightKg, 0)} กก.</p><p>ใบชั่ง ${escapeHtml(item.ReceiptNumber || '—')} • ${formatNumber(item.PricePerKg, 2)} บาท/กก.</p></div><div class="amount"><strong>${formatMoney(item.NetAmount)}</strong><small>ยอดรับสุทธิ</small></div></div><div class="history-actions">${imageButton}<button class="history-action edit-sale" type="button" data-sale-id="${escapeHtml(item.SaleID)}"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg> แก้ไขข้อมูล</button></div></article>`;
+  const labor = item.laborSummary || { totalLaborCost: 0, balanceDue: 0, paymentStatus: 'PAID' };
+  const status = labor.totalLaborCost <= 0 ? 'จัดการเอง' : (labor.paymentStatus === 'PAID' ? 'จ่ายครบแล้ว' : labor.paymentStatus === 'PARTIAL' ? 'จ่ายบางส่วน' : 'ยังไม่จ่าย');
+  return `<article class="history-card" data-sale-id="${escapeHtml(item.SaleID)}"><div class="history-main"><div><div class="history-date-row"><h3>${escapeHtml(formatThaiDate(item.SaleDate))}</h3>${latestBadge}</div><p>${escapeHtml(item.BuyerNameRaw || 'ไม่ระบุลาน')} • ${formatNumber(item.NetWeightKg, 0)} กก.</p><p>ค่าแรง ${formatMoney(labor.totalLaborCost)} • ${escapeHtml(status)}</p></div><div class="amount"><strong>${formatMoney(item.netAfterLabor ?? item.NetAmount)}</strong><small>คงเหลือหลังค่าแรง</small></div></div><div class="history-actions">${imageButton}<button class="history-action edit-sale" type="button" data-sale-id="${escapeHtml(item.SaleID)}"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg> แก้ไขข้อมูล</button></div></article>`;
 }
 
 function renderSaleGap(newerDate, olderDate) {
@@ -343,6 +575,19 @@ function renderSaleGap(newerDate, olderDate) {
 function saleDateValue(value) {
   const match = String(value || '').slice(0, 10).match(/^(\d{4})-(\d{2})-(\d{2})$/);
   return match ? Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])) : Number.NEGATIVE_INFINITY;
+}
+
+function clientLaborSummary(entries, sale) {
+  const weight = numberOrNull(sale.payableWeightKg) ?? numberOrNull(sale.netWeightKg) ?? 0;
+  const totalLaborCost = round2((entries || []).reduce((sum, entry) => {
+    const mode = String(entry.workMode || entry.WorkMode || '').toUpperCase();
+    if (mode === 'SELF') return sum;
+    const method = entry.calculationMethod || entry.CalculationMethod;
+    const rate = numberOrNull(entry.rateSnapshot ?? entry.RateSnapshot) || 0;
+    const amount = method === 'PER_KG' ? weight * rate : (numberOrNull(entry.headcount ?? entry.Headcount) || 0) * rate;
+    return sum + amount;
+  }, 0));
+  return { totalLaborCost, netAfterLabor: round2((numberOrNull(sale.netAmount) || 0) - totalLaborCost) };
 }
 
 function openReceiptViewer(data) {
@@ -370,7 +615,7 @@ async function editSale(saleId) {
   try {
     const item = await api('sales.get', { saleId });
     state.editingSaleId = item.SaleID; state.expectedUpdatedAt = item.UpdatedAt; state.source = 'MANUAL';
-    const receipt = recordToReceipt(item); showView('home'); openReview(receipt, [], { warnings: [] }, true);
+    const receipt = recordToReceipt(item); showView('home'); openReview(receipt, [], { warnings: [] }, true, item.laborEntries || []);
   } catch (error) { handleError(error); } finally { setLoading(false); }
 }
 
@@ -573,8 +818,8 @@ function readFileAsDataUrl(file){return new Promise((resolve,reject)=>{const rea
 function loadImage(url){return new Promise((resolve,reject)=>{const image=new Image();image.onload=()=>resolve(image);image.onerror=reject;image.src=url;});}
 async function imagePayload(dataUrl){const [header,base64]=dataUrl.split(',');const bytes=Uint8Array.from(atob(base64),char=>char.charCodeAt(0));const digest=await crypto.subtle.digest('SHA-256',bytes);const sha256=Array.from(new Uint8Array(digest),byte=>byte.toString(16).padStart(2,'0')).join('');return{mimeType:(header.match(/data:([^;]+)/)||[])[1]||'image/jpeg',base64,sha256,bytes:bytes.length};}
 function getIdempotencyKey(){let key=localStorage.getItem('palmIdempotencyKey');if(!key){key=crypto.randomUUID?crypto.randomUUID():`${Date.now()}-${Math.random()}`;localStorage.setItem('palmIdempotencyKey',key);}return key;}
-function saveDraft(){if(!$('#review-panel').classList.contains('hidden'))localStorage.setItem('palmDraft',JSON.stringify({receipt:collectReceipt(),source:state.source,ocrRunId:state.ocrRunId,model:state.model,savedAt:Date.now()}));}
-function restoreDraft(){try{const draft=JSON.parse(localStorage.getItem('palmDraft'));if(draft?.receipt){state.source=draft.source||'MANUAL';state.ocrRunId=draft.ocrRunId||'';state.model=draft.model||'';openReview(draft.receipt,[],{warnings:[{message:'กู้คืนแบบร่างที่ยังไม่ได้บันทึก'}]},false);}}catch(error){localStorage.removeItem('palmDraft');}}
+function saveDraft(){if(!$('#review-panel').classList.contains('hidden'))localStorage.setItem('palmDraft',JSON.stringify({receipt:collectReceipt(),laborEntries:collectLaborEntries(true,true),source:state.source,ocrRunId:state.ocrRunId,model:state.model,savedAt:Date.now()}));}
+function restoreDraft(){try{const draft=JSON.parse(localStorage.getItem('palmDraft'));if(draft?.receipt){state.source=draft.source||'MANUAL';state.ocrRunId=draft.ocrRunId||'';state.model=draft.model||'';openReview(draft.receipt,[],{warnings:[{message:'กู้คืนแบบร่างที่ยังไม่ได้บันทึก'}]},false,draft.laborEntries||[]);}}catch(error){localStorage.removeItem('palmDraft');}}
 function populateYears(){const current=new Date().getFullYear();$('#dashboard-year').innerHTML=`<option value="all">ทุกปี</option>${Array.from({length:6},(_,i)=>`<option value="${current-i}">${current-i+543}</option>`).join('')}`;$('#dashboard-year').value='all';}
 function updateDashboardYears(years,selected){const current=new Date().getFullYear();const source=years.length?years:Array.from({length:6},(_,i)=>current-i);const values=Array.from(new Set(source.map(String))).sort().reverse();const select=$('#dashboard-year');select.innerHTML=`<option value="all">ทุกปี</option>${values.map(year=>`<option value="${escapeHtml(year)}">${Number(year)+543}</option>`).join('')}`;select.value=values.includes(String(selected))?String(selected):'all';}
 function setupInstall(){window.addEventListener('beforeinstallprompt',event=>{event.preventDefault();state.installPrompt=event;$('#install-button').classList.remove('hidden');});$('#install-button').addEventListener('click',async()=>{if(!state.installPrompt)return;state.installPrompt.prompt();await state.installPrompt.userChoice;state.installPrompt=null;$('#install-button').classList.add('hidden');});}

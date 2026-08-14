@@ -10,6 +10,7 @@ const requiredFunctions = [
   'doGet','doPost','setupV1','runV1SmokeTests','testGeminiReceiptFromDrive',
   'analyzeReceipt_','createSale_','updateSale_','voidSale_','listSales_',
   'getSale_','getSaleSaveStatus_','getDashboardSummary_','findDuplicateCandidates_','requireAccessToken_'
+  ,'upgradeLaborSystem','listContractors_','createContractor_','saveLaborForSale_','createLaborPayment_'
 ];
 for (const name of requiredFunctions) {
   if (!new RegExp(`function\\s+${name.replace(/[.*+?^${}()|[\\]\\]/g, '\\$&')}\\s*\\(`).test(backend)) {

@@ -57,3 +57,4 @@ console.log(JSON.stringify({
   requiredFunctions: requiredFunctions.length,
   pwaIcons: manifestWeb.icons.length
 }, null, 2));
+

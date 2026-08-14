@@ -1,5 +1,5 @@
 /**
- * Palm Yield Ledger Backend v1.2.0
+ * Palm Yield Ledger Backend v1.3.0
  * Apps Script Project: 1PzG5lE7bxpSMSyO_BOBx9DGuFTZMTw_7mBV7o12c6HoWMKqzLlmwaGaz
  * รวมจากไฟล์ Phase 1 ใน aodxx/Pem เพื่อให้คัดลอกวางใน Code.gs ได้ครั้งเดียว
  */
@@ -8,7 +8,7 @@
 const APP_CONFIG = Object.freeze({
   appName: 'Palm Yield Ledger',
   serviceName: 'palm-yield-ledger-api',
-  version: '1.2.0',
+  version: '1.3.0',
   apiVersion: 'v1',
   timeZone: 'Asia/Bangkok',
   spreadsheetId: '1S5WtdhsVUOQ5APZ_EiBKSZBTeyi6VKnVLeaGbWPBAPc',
@@ -36,6 +36,23 @@ const APP_CONFIG = Object.freeze({
       'BuyerID', 'BuyerName', 'NormalizedName', 'Branch', 'Address', 'Phone', 'Notes',
       'Active', 'CreatedAt', 'UpdatedAt'
     ]),
+    Contractors: Object.freeze([
+      'ContractorID', 'ContractorType', 'Name', 'NormalizedName', 'CalculationMethod',
+      'DefaultRate', 'DefaultHeadcount', 'Phone', 'Notes', 'Active', 'LastUsedAt',
+      'CreatedAt', 'UpdatedAt'
+    ]),
+    LaborEntries: Object.freeze([
+      'LaborEntryID', 'RecordStatus', 'SaleID', 'ContractorID', 'WorkMode', 'ContractorNameSnapshot',
+      'CalculationMethod', 'WeightKgSnapshot', 'Headcount', 'RateSnapshot', 'LaborCost',
+      'AmountPaid', 'BalanceDue', 'PaymentStatus', 'Notes', 'CreatedAt', 'UpdatedAt'
+    ]),
+    LaborPayments: Object.freeze([
+      'PaymentID', 'RequestID', 'LaborEntryID', 'SaleID', 'ContractorID', 'Amount', 'PaymentDate',
+      'PaymentMethod', 'Notes', 'CreatedAt', 'UpdatedAt'
+    ]),
+    SchemaMigrations: Object.freeze([
+      'MigrationID', 'Version', 'Description', 'Status', 'BackupFileID', 'AppliedAt'
+    ]),
     OCRRuns: Object.freeze([
       'OCRRunID', 'RequestID', 'ImageSha256', 'Model', 'SchemaVersion', 'Status',
       'OverallConfidence', 'MissingFieldsJSON', 'WarningsJSON', 'ExtractedJSON',
@@ -59,7 +76,8 @@ const SCRIPT_PROPERTY_KEYS = Object.freeze({
   geminiApiKey: 'GEMINI_API_KEY',
   accessTokenHash: 'APP_ACCESS_TOKEN_HASH',
   setupVersion: 'SETUP_VERSION',
-  setupAt: 'SETUP_AT'
+  setupAt: 'SETUP_AT',
+  laborMigrationBackupId: 'LABOR_MIGRATION_BACKUP_ID'
 });
 
 // Reuse Apps Script service objects inside one request. Reopening the same
@@ -192,6 +210,17 @@ function sanitizeFilePart_(value) {
   return String(value || 'unknown').trim().replace(/[^a-zA-Z0-9ก-๙_-]+/g, '-').slice(0, 50) || 'unknown';
 }
 
+function roundMoney_(value) {
+  return Math.round((toNumber_(value, 0) || 0) * 100) / 100;
+}
+
+function resetRuntimeCaches_() {
+  runtimeSpreadsheetCache_ = null;
+  runtimeSheetCache_ = {};
+  runtimeHeaderCache_ = {};
+  runtimeSettingsCache_ = null;
+}
+
 // ===== Database.gs =====
 function getSpreadsheet_() {
   if (runtimeSpreadsheetCache_) return runtimeSpreadsheetCache_;
@@ -253,6 +282,45 @@ function validateDatabaseSchema_() {
     spreadsheetName: spreadsheet.getName(),
     sheets: results
   };
+}
+
+function ensureSheetSchema_(sheetName, expectedHeaders) {
+  const spreadsheet = getSpreadsheet_();
+  let sheet = spreadsheet.getSheetByName(sheetName);
+  let created = false;
+  if (!sheet) {
+    sheet = spreadsheet.insertSheet(sheetName);
+    created = true;
+  }
+  const currentHeaders = readHeaders_(sheet);
+  const missingHeaders = expectedHeaders.filter(function (header) {
+    return currentHeaders.indexOf(header) < 0;
+  });
+  if (missingHeaders.length) {
+    const startColumn = Math.max(1, currentHeaders.length + 1);
+    sheet.getRange(1, startColumn, 1, missingHeaders.length).setValues([missingHeaders]);
+  }
+  if (created || missingHeaders.length) {
+    const finalColumnCount = Math.max(1, expectedHeaders.length, sheet.getLastColumn());
+    sheet.setFrozenRows(1);
+    sheet.getRange(1, 1, 1, finalColumnCount)
+      .setFontWeight('bold')
+      .setBackground('#14532d')
+      .setFontColor('#ffffff')
+      .setWrap(true);
+    if (created) sheet.autoResizeColumns(1, expectedHeaders.length);
+  }
+  runtimeSheetCache_[sheetName] = sheet;
+  delete runtimeHeaderCache_[String(sheet.getSheetId())];
+  return { sheetName: sheetName, created: created, addedHeaders: missingHeaders };
+}
+
+function ensureRequiredSheets_() {
+  const results = [];
+  Object.keys(APP_CONFIG.requiredSheets).forEach(function (sheetName) {
+    results.push(ensureSheetSchema_(sheetName, APP_CONFIG.requiredSheets[sheetName]));
+  });
+  return results;
 }
 
 function readSettings_() {
@@ -352,6 +420,10 @@ function replaceDeductions_(saleId, deductions) {
   rows.forEach(function (row) { sheet.deleteRow(row.__rowNumber); });
   const timestamp = nowIso_();
   const records = (deductions || []).map(function (deduction, index) {
+    const lowConfidenceFields = getLowConfidenceFields_(normalized, Number(settings.LOW_CONFIDENCE_THRESHOLD || 0.75));
+    if (validation.warnings.some(function (item) { return item.code === 'DATE_OUTLIER'; }) && lowConfidenceFields.indexOf('saleDate') < 0) {
+      lowConfidenceFields.push('saleDate');
+    }
     return {
       DeductionID: createId_('DED'), SaleID: saleId, SortOrder: index + 1,
       DeductionType: deduction.type || 'OTHER', Description: deduction.description || '',
@@ -567,10 +639,6 @@ function analyzeReceipt_(payload, requestId) {
       ErrorCode: '',
       CreatedAt: nowIso_()
     });
-    const lowConfidenceFields = getLowConfidenceFields_(normalized, Number(settings.LOW_CONFIDENCE_THRESHOLD || 0.75));
-    if (validation.warnings.some(function (item) { return item.code === 'DATE_OUTLIER'; }) && lowConfidenceFields.indexOf('saleDate') < 0) {
-      lowConfidenceFields.push('saleDate');
-    }
     return {
       ocrRunId: ocrRunId,
       model: model,
@@ -825,6 +893,295 @@ function stripInternalFields_(row) {
   return output;
 }
 
+// ===== LaborService.gs =====
+function normalizeContractorType_(value) {
+  const type = String(value || '').trim().toUpperCase();
+  if (['TEAM', 'INDIVIDUAL'].indexOf(type) < 0) {
+    throw new AppError('INVALID_CONTRACTOR_TYPE', 'ประเภทผู้รับจ้างต้องเป็น TEAM หรือ INDIVIDUAL');
+  }
+  return type;
+}
+
+function normalizeCalculationMethod_(value, contractorType) {
+  const fallback = contractorType === 'TEAM' ? 'PER_KG' : 'PER_PERSON';
+  const method = String(value || fallback).trim().toUpperCase();
+  if (['PER_KG', 'PER_PERSON'].indexOf(method) < 0) {
+    throw new AppError('INVALID_CALCULATION_METHOD', 'วิธีคิดค่าแรงต้องเป็น PER_KG หรือ PER_PERSON');
+  }
+  return method;
+}
+
+function listContractors_(filters) {
+  const input = filters || {};
+  const includeInactive = toBoolean_(input.includeInactive);
+  const type = input.contractorType ? String(input.contractorType).toUpperCase() : '';
+  const query = normalizeName_(input.query || '');
+  return readSheetObjects_('Contractors').filter(function (row) {
+    if (!includeInactive && (row.Active === false || String(row.Active).toUpperCase() === 'FALSE')) return false;
+    if (type && String(row.ContractorType).toUpperCase() !== type) return false;
+    if (query && normalizeName_(row.Name).indexOf(query) < 0) return false;
+    return true;
+  }).sort(function (a, b) {
+    const recent = String(b.LastUsedAt || '').localeCompare(String(a.LastUsedAt || ''));
+    return recent || String(a.Name || '').localeCompare(String(b.Name || ''), 'th');
+  }).map(stripInternalFields_);
+}
+
+function createContractor_(payload) {
+  const input = payload.contractor || payload || {};
+  const type = normalizeContractorType_(input.contractorType || input.ContractorType);
+  const name = cleanText_(input.name || input.Name);
+  if (!name) throw new AppError('REQUIRED', 'กรุณาระบุชื่อทีมหรือชื่อบุคคล');
+  const normalizedName = normalizeName_(name);
+  const duplicate = readSheetObjects_('Contractors').filter(function (row) {
+    return String(row.ContractorType).toUpperCase() === type && String(row.NormalizedName) === normalizedName;
+  })[0];
+  if (duplicate) throw new AppError('DUPLICATE_CONTRACTOR', 'มีชื่อทีม/บุคคลนี้อยู่แล้ว', {
+    contractor: stripInternalFields_(duplicate)
+  });
+  const method = normalizeCalculationMethod_(input.calculationMethod || input.CalculationMethod, type);
+  const rate = toNumber_(input.defaultRate !== undefined ? input.defaultRate : input.DefaultRate, 0);
+  const headcount = toNumber_(input.defaultHeadcount !== undefined ? input.defaultHeadcount : input.DefaultHeadcount, 0);
+  if (!(rate >= 0)) throw new AppError('INVALID_AMOUNT', 'อัตราค่าแรงต้องไม่น้อยกว่า 0');
+  if (method === 'PER_PERSON' && headcount < 0) throw new AppError('INVALID_HEADCOUNT', 'จำนวนคนต้องไม่น้อยกว่า 0');
+  const timestamp = nowIso_();
+  const record = {
+    ContractorID: createId_('CON'), ContractorType: type, Name: name, NormalizedName: normalizedName,
+    CalculationMethod: method, DefaultRate: roundMoney_(rate), DefaultHeadcount: headcount || '',
+    Phone: cleanText_(input.phone || input.Phone) || '', Notes: cleanText_(input.notes || input.Notes) || '',
+    Active: input.active === undefined && input.Active === undefined ? true : toBoolean_(input.active !== undefined ? input.active : input.Active),
+    LastUsedAt: '', CreatedAt: timestamp, UpdatedAt: timestamp
+  };
+  appendObjectRow_('Contractors', record);
+  return stripInternalFields_(record);
+}
+
+function updateContractor_(payload) {
+  const input = payload.contractor || payload || {};
+  const contractorId = input.contractorId || input.ContractorID || payload.contractorId;
+  const existing = findObjectById_('Contractors', 'ContractorID', contractorId);
+  if (!existing) throw new AppError('NOT_FOUND', 'ไม่พบทีมงานหรือบุคคล');
+  const type = normalizeContractorType_(input.contractorType || input.ContractorType || existing.ContractorType);
+  const name = cleanText_(input.name || input.Name || existing.Name);
+  if (!name) throw new AppError('REQUIRED', 'กรุณาระบุชื่อทีมหรือชื่อบุคคล');
+  existing.ContractorType = type;
+  existing.Name = name;
+  existing.NormalizedName = normalizeName_(name);
+  existing.CalculationMethod = normalizeCalculationMethod_(input.calculationMethod || input.CalculationMethod || existing.CalculationMethod, type);
+  existing.DefaultRate = roundMoney_(input.defaultRate !== undefined ? input.defaultRate : (input.DefaultRate !== undefined ? input.DefaultRate : existing.DefaultRate));
+  existing.DefaultHeadcount = toNumber_(input.defaultHeadcount !== undefined ? input.defaultHeadcount : (input.DefaultHeadcount !== undefined ? input.DefaultHeadcount : existing.DefaultHeadcount), 0) || '';
+  if (input.phone !== undefined || input.Phone !== undefined) existing.Phone = cleanText_(input.phone !== undefined ? input.phone : input.Phone) || '';
+  if (input.notes !== undefined || input.Notes !== undefined) existing.Notes = cleanText_(input.notes !== undefined ? input.notes : input.Notes) || '';
+  if (input.active !== undefined || input.Active !== undefined) existing.Active = toBoolean_(input.active !== undefined ? input.active : input.Active);
+  existing.UpdatedAt = nowIso_();
+  updateObjectRow_('Contractors', existing.__rowNumber, existing);
+  return stripInternalFields_(existing);
+}
+
+function touchContractor_(contractorId, timestamp) {
+  if (!contractorId) return;
+  const contractor = findObjectById_('Contractors', 'ContractorID', contractorId);
+  if (!contractor) return;
+  contractor.LastUsedAt = timestamp || nowIso_();
+  contractor.UpdatedAt = timestamp || nowIso_();
+  updateObjectRow_('Contractors', contractor.__rowNumber, contractor);
+}
+
+function normalizeWorkMode_(value) {
+  const mode = String(value || '').trim().toUpperCase();
+  if (['SELF', 'TEAM', 'INDIVIDUAL'].indexOf(mode) < 0) {
+    throw new AppError('INVALID_WORK_MODE', 'รูปแบบการทำงานต้องเป็น SELF, TEAM หรือ INDIVIDUAL');
+  }
+  return mode;
+}
+
+function normalizeLaborDraft_(input, sale) {
+  const draft = input || {};
+  const mode = normalizeWorkMode_(draft.workMode || draft.WorkMode);
+  let contractor = null;
+  const contractorId = cleanText_(draft.contractorId || draft.ContractorID) || '';
+  if (contractorId) {
+    contractor = findObjectById_('Contractors', 'ContractorID', contractorId);
+    if (!contractor) throw new AppError('NOT_FOUND', 'ไม่พบทีมงานหรือบุคคลที่เลือก', { contractorId: contractorId });
+  }
+  if (mode !== 'SELF' && !contractor && !cleanText_(draft.contractorName || draft.ContractorNameSnapshot)) {
+    throw new AppError('REQUIRED', 'กรุณาเลือกหรือระบุชื่อทีมงาน/บุคคล');
+  }
+  const contractorType = contractor ? String(contractor.ContractorType).toUpperCase() : (mode === 'TEAM' ? 'TEAM' : 'INDIVIDUAL');
+  const method = mode === 'SELF' ? 'NONE' : normalizeCalculationMethod_(
+    draft.calculationMethod || draft.CalculationMethod || (contractor && contractor.CalculationMethod), contractorType
+  );
+  const saleWeight = toNumber_(sale && (sale.payableWeightKg !== undefined ? sale.payableWeightKg : sale.PayableWeightKg),
+    toNumber_(sale && (sale.netWeightKg !== undefined ? sale.netWeightKg : sale.NetWeightKg), 0)) || 0;
+  const weight = toNumber_(draft.weightKgSnapshot !== undefined ? draft.weightKgSnapshot : draft.WeightKgSnapshot, saleWeight) || 0;
+  const headcount = toNumber_(draft.headcount !== undefined ? draft.headcount : draft.Headcount,
+    toNumber_(contractor && contractor.DefaultHeadcount, 0)) || 0;
+  const rate = roundMoney_(draft.rateSnapshot !== undefined ? draft.rateSnapshot :
+    (draft.RateSnapshot !== undefined ? draft.RateSnapshot : toNumber_(contractor && contractor.DefaultRate, 0)));
+  if (mode !== 'SELF' && !(rate >= 0)) throw new AppError('INVALID_AMOUNT', 'อัตราค่าแรงต้องไม่น้อยกว่า 0');
+  if (method === 'PER_KG' && !(weight > 0)) throw new AppError('INVALID_WEIGHT', 'ไม่พบน้ำหนักสุทธิสำหรับคำนวณค่าแรง');
+  if (method === 'PER_PERSON' && !(headcount > 0)) throw new AppError('INVALID_HEADCOUNT', 'จำนวนคนต้องมากกว่า 0');
+  let laborCost = 0;
+  if (method === 'PER_KG') laborCost = roundMoney_(weight * rate);
+  if (method === 'PER_PERSON') laborCost = roundMoney_(headcount * rate);
+  return {
+    laborEntryId: cleanText_(draft.laborEntryId || draft.LaborEntryID) || '',
+    workMode: mode,
+    contractorId: mode === 'SELF' ? '' : contractorId,
+    contractorName: mode === 'SELF' ? 'จัดการเอง' : (cleanText_(draft.contractorName || draft.ContractorNameSnapshot) || contractor.Name),
+    calculationMethod: method,
+    weightKgSnapshot: mode === 'SELF' ? 0 : weight,
+    headcount: method === 'PER_PERSON' ? headcount : 0,
+    rateSnapshot: mode === 'SELF' ? 0 : rate,
+    laborCost: laborCost,
+    notes: cleanText_(draft.notes || draft.Notes) || ''
+  };
+}
+
+function saveLaborEntriesForSale_(saleId, drafts, sale, replaceExisting) {
+  if (!Array.isArray(drafts)) return listLaborEntries_({ saleId: saleId });
+  if (drafts.length > 20) throw new AppError('LIMIT_EXCEEDED', 'หนึ่งรอบบันทึกทีมงานได้ไม่เกิน 20 รายการ');
+  const timestamp = nowIso_();
+  const existingRows = readSheetObjects_('LaborEntries').filter(function (row) {
+    return String(row.SaleID) === String(saleId) && String(row.RecordStatus || 'ACTIVE') !== 'VOID';
+  });
+  const existingById = {};
+  existingRows.forEach(function (row) { existingById[String(row.LaborEntryID)] = row; });
+  const retainedIds = {};
+  const output = [];
+  drafts.forEach(function (draft, draftIndex) {
+    const normalized = normalizeLaborDraft_(draft, sale);
+    const generatedEntryId = 'LAB_' + String(saleId).replace(/^SALE_/, '') + '_' + ('0' + (draftIndex + 1)).slice(-2);
+    const candidateEntryId = normalized.laborEntryId || generatedEntryId;
+    const existing = existingById[candidateEntryId] || null;
+    const laborEntryId = existing ? String(existing.LaborEntryID) : candidateEntryId;
+    const amountPaid = existing ? roundMoney_(existing.AmountPaid) : 0;
+    if (amountPaid > normalized.laborCost) {
+      throw new AppError('PAYMENT_EXCEEDS_COST', 'ไม่สามารถลดค่าแรงต่ำกว่ายอดที่จ่ายไปแล้ว', { laborEntryId: laborEntryId });
+    }
+    const balanceDue = roundMoney_(normalized.laborCost - amountPaid);
+    const paymentStatus = amountPaid <= 0 ? 'UNPAID' : (balanceDue <= 0 ? 'PAID' : 'PARTIAL');
+    const record = {
+      LaborEntryID: laborEntryId, RecordStatus: 'ACTIVE', SaleID: saleId,
+      ContractorID: normalized.contractorId, WorkMode: normalized.workMode,
+      ContractorNameSnapshot: normalized.contractorName, CalculationMethod: normalized.calculationMethod,
+      WeightKgSnapshot: normalized.weightKgSnapshot, Headcount: normalized.headcount,
+      RateSnapshot: normalized.rateSnapshot, LaborCost: normalized.laborCost,
+      AmountPaid: amountPaid, BalanceDue: balanceDue, PaymentStatus: paymentStatus,
+      Notes: normalized.notes, CreatedAt: existing ? existing.CreatedAt : timestamp, UpdatedAt: timestamp
+    };
+    if (existing) updateObjectRow_('LaborEntries', existing.__rowNumber, record);
+    else appendObjectRow_('LaborEntries', record);
+    if (normalized.contractorId) touchContractor_(normalized.contractorId, timestamp);
+    retainedIds[laborEntryId] = true;
+    output.push(stripInternalFields_(record));
+  });
+  if (replaceExisting) {
+    existingRows.forEach(function (row) {
+      if (retainedIds[String(row.LaborEntryID)]) return;
+      row.RecordStatus = 'VOID';
+      row.UpdatedAt = timestamp;
+      updateObjectRow_('LaborEntries', row.__rowNumber, row);
+    });
+  }
+  return output;
+}
+
+function listLaborEntries_(filters) {
+  const input = filters || {};
+  return readSheetObjects_('LaborEntries').filter(function (row) {
+    if (!toBoolean_(input.includeVoid) && String(row.RecordStatus || 'ACTIVE') === 'VOID') return false;
+    if (input.saleId && String(row.SaleID) !== String(input.saleId)) return false;
+    if (input.contractorId && String(row.ContractorID) !== String(input.contractorId)) return false;
+    if (input.paymentStatus && String(row.PaymentStatus) !== String(input.paymentStatus).toUpperCase()) return false;
+    return true;
+  }).sort(function (a, b) { return String(b.CreatedAt || '').localeCompare(String(a.CreatedAt || '')); })
+    .map(stripInternalFields_);
+}
+
+function saveLaborForSale_(payload, requestId) {
+  const saleRow = findObjectById_('Sales', 'SaleID', payload.saleId);
+  if (!saleRow) throw new AppError('NOT_FOUND', 'ไม่พบรายการขาย');
+  const lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+  runtimeWriteLockHeld_ = true;
+  try {
+    const entries = saveLaborEntriesForSale_(saleRow.SaleID, payload.laborEntries || [], saleRow, true);
+    appendAudit_(saleRow.SaleID, 'LABOR_UPDATE', { laborEntries: entries }, requestId);
+    return { saleId: saleRow.SaleID, laborEntries: entries, laborSummary: summarizeLaborEntries_(entries) };
+  } finally {
+    runtimeWriteLockHeld_ = false;
+    lock.releaseLock();
+  }
+}
+
+function summarizeLaborEntries_(entries) {
+  const summary = { totalLaborCost: 0, amountPaid: 0, balanceDue: 0, paymentStatus: 'UNPAID' };
+  (entries || []).forEach(function (entry) {
+    summary.totalLaborCost += toNumber_(entry.LaborCost, 0) || 0;
+    summary.amountPaid += toNumber_(entry.AmountPaid, 0) || 0;
+    summary.balanceDue += toNumber_(entry.BalanceDue, 0) || 0;
+  });
+  summary.totalLaborCost = roundMoney_(summary.totalLaborCost);
+  summary.amountPaid = roundMoney_(summary.amountPaid);
+  summary.balanceDue = roundMoney_(summary.balanceDue);
+  summary.paymentStatus = summary.totalLaborCost <= 0 || summary.balanceDue <= 0 ? 'PAID' :
+    (summary.amountPaid > 0 ? 'PARTIAL' : 'UNPAID');
+  return summary;
+}
+
+function createLaborPayment_(payload, requestId) {
+  const existingPayment = readSheetObjects_('LaborPayments').filter(function (row) {
+    return requestId && String(row.RequestID) === String(requestId);
+  })[0];
+  if (existingPayment) return { created: false, idempotent: true, payment: stripInternalFields_(existingPayment) };
+  const entry = findObjectById_('LaborEntries', 'LaborEntryID', payload.laborEntryId);
+  if (!entry || String(entry.RecordStatus || 'ACTIVE') === 'VOID') throw new AppError('NOT_FOUND', 'ไม่พบรายการค่าแรง');
+  const amount = roundMoney_(payload.amount);
+  if (!(amount > 0)) throw new AppError('INVALID_AMOUNT', 'จำนวนเงินที่จ่ายต้องมากกว่า 0');
+  const lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+  runtimeWriteLockHeld_ = true;
+  try {
+    const freshEntry = findObjectById_('LaborEntries', 'LaborEntryID', payload.laborEntryId);
+    const balanceBefore = roundMoney_(freshEntry.BalanceDue);
+    if (amount > balanceBefore) {
+      throw new AppError('PAYMENT_EXCEEDS_BALANCE', 'จำนวนเงินมากกว่ายอดค้างจ่าย', { balanceDue: balanceBefore });
+    }
+    const timestamp = nowIso_();
+    const payment = {
+      PaymentID: createId_('PAY'), RequestID: requestId, LaborEntryID: freshEntry.LaborEntryID,
+      SaleID: freshEntry.SaleID, ContractorID: freshEntry.ContractorID, Amount: amount,
+      PaymentDate: cleanText_(payload.paymentDate) || Utilities.formatDate(new Date(), APP_CONFIG.timeZone, 'yyyy-MM-dd'),
+      PaymentMethod: cleanText_(payload.paymentMethod) || '', Notes: cleanText_(payload.notes) || '',
+      CreatedAt: timestamp, UpdatedAt: timestamp
+    };
+    appendObjectRow_('LaborPayments', payment);
+    freshEntry.AmountPaid = roundMoney_((toNumber_(freshEntry.AmountPaid, 0) || 0) + amount);
+    freshEntry.BalanceDue = roundMoney_((toNumber_(freshEntry.LaborCost, 0) || 0) - freshEntry.AmountPaid);
+    freshEntry.PaymentStatus = freshEntry.BalanceDue <= 0 ? 'PAID' : 'PARTIAL';
+    freshEntry.UpdatedAt = timestamp;
+    updateObjectRow_('LaborEntries', freshEntry.__rowNumber, freshEntry);
+    appendAudit_(freshEntry.SaleID, 'LABOR_PAYMENT', { payment: payment }, requestId);
+    return { created: true, payment: stripInternalFields_(payment), laborEntry: stripInternalFields_(freshEntry) };
+  } finally {
+    runtimeWriteLockHeld_ = false;
+    lock.releaseLock();
+  }
+}
+
+function listLaborPayments_(filters) {
+  const input = filters || {};
+  return readSheetObjects_('LaborPayments').filter(function (row) {
+    if (input.saleId && String(row.SaleID) !== String(input.saleId)) return false;
+    if (input.laborEntryId && String(row.LaborEntryID) !== String(input.laborEntryId)) return false;
+    if (input.contractorId && String(row.ContractorID) !== String(input.contractorId)) return false;
+    return true;
+  }).sort(function (a, b) {
+    return String(b.PaymentDate || b.CreatedAt || '').localeCompare(String(a.PaymentDate || a.CreatedAt || ''));
+  }).map(stripInternalFields_);
+}
+
 // ===== SalesService.gs =====
 function createSale_(payload, requestId) {
   const sale = normalizeReceipt_(payload.sale || payload.receipt || {});
@@ -832,7 +1189,7 @@ function createSale_(payload, requestId) {
   if (!validation.valid) throw new AppError(validation.errors[0].code, validation.errors[0].message, validation);
   const idempotencyKey = String(payload.idempotencyKey || requestId);
   const existing = getIdempotentSale_(idempotencyKey);
-  if (existing) return { created: false, idempotent: true, sale: stripInternalFields_(existing) };
+  if (existing) return { created: false, idempotent: true, sale: enrichSale_(existing) };
   const duplicateCandidates = findDuplicateCandidates_(sale, payload.image && payload.image.sha256);
   const blockScore = Number(readSettings_().DUPLICATE_BLOCK_SCORE || 0.9);
   const saleId = createId_('SALE');
@@ -915,7 +1272,16 @@ function createSale_(payload, requestId) {
     }
     const deductionMap = {};
     deductionMap[saleId] = deductionRecords;
-    return { created: true, sale: enrichSale_(record, deductionMap), warnings: saveWarnings, duplicateCandidates: duplicateCandidates };
+    let laborRecords = [];
+    try {
+      laborRecords = saveLaborEntriesForSale_(saleId, payload.laborEntries, sale, false);
+    } catch (laborError) {
+      saveWarnings.push({ code: 'LABOR_SAVE_FAILED', field: 'laborEntries', message: 'บันทึกรายการขายแล้ว แต่ข้อมูลทีมและค่าแรงยังไม่สำเร็จ' });
+      console.error('Labor entries save failed', laborError && laborError.message);
+    }
+    const laborMap = {};
+    laborMap[saleId] = laborRecords;
+    return { created: true, sale: enrichSale_(record, deductionMap, laborMap), warnings: saveWarnings, duplicateCandidates: duplicateCandidates };
   } catch (error) {
     if (!committed && storedImage && storedImage.file) { try { storedImage.file.setTrashed(true); } catch (ignore) {} }
     throw error;
@@ -929,7 +1295,7 @@ function getSaleSaveStatus_(idempotencyKey) {
   const key = String(idempotencyKey || '').trim();
   if (!key) throw new AppError('INVALID_REQUEST', 'ไม่พบรหัสติดตามการบันทึก');
   const sale = getIdempotentSale_(key);
-  return sale ? { state: 'SAVED', saved: true, sale: stripInternalFields_(sale) } : { state: 'PENDING', saved: false };
+  return sale ? { state: 'SAVED', saved: true, sale: enrichSale_(sale) } : { state: 'PENDING', saved: false };
 }
 
 function listSales_(filters) {
@@ -955,7 +1321,13 @@ function listSales_(filters) {
     if (!deductionMap[item.SaleID]) deductionMap[item.SaleID] = [];
     deductionMap[item.SaleID].push(item);
   });
-  return selected.map(function (row) { return enrichSale_(row, deductionMap); });
+  const laborMap = {};
+  readSheetObjects_('LaborEntries').forEach(function (item) {
+    if (!selectedIds[item.SaleID] || String(item.RecordStatus || 'ACTIVE') === 'VOID') return;
+    if (!laborMap[item.SaleID]) laborMap[item.SaleID] = [];
+    laborMap[item.SaleID].push(item);
+  });
+  return selected.map(function (row) { return enrichSale_(row, deductionMap, laborMap); });
 }
 
 function getSale_(saleId) {
@@ -964,12 +1336,18 @@ function getSale_(saleId) {
   return enrichSale_(row);
 }
 
-function enrichSale_(row, deductionMap) {
+function enrichSale_(row, deductionMap, laborMap) {
   const output = stripInternalFields_(row);
   output.SaleDate = dateKey_(output.SaleDate);
   const source = deductionMap ? (deductionMap[output.SaleID] || []) : readSheetObjects_('Deductions').filter(function (item) { return item.SaleID === output.SaleID; });
   output.deductions = source
     .sort(function (a, b) { return Number(a.SortOrder) - Number(b.SortOrder); }).map(stripInternalFields_);
+  const laborSource = laborMap ? (laborMap[output.SaleID] || []) : readSheetObjects_('LaborEntries').filter(function (item) {
+    return item.SaleID === output.SaleID && String(item.RecordStatus || 'ACTIVE') !== 'VOID';
+  });
+  output.laborEntries = laborSource.map(stripInternalFields_);
+  output.laborSummary = summarizeLaborEntries_(output.laborEntries);
+  output.netAfterLabor = roundMoney_((toNumber_(output.NetAmount, 0) || 0) - output.laborSummary.totalLaborCost);
   output.imageUrl = output.ImageFileID ? 'https://drive.google.com/file/d/' + output.ImageFileID + '/view' : '';
   return output;
 }
@@ -996,6 +1374,7 @@ function updateSale_(payload, requestId) {
   updateObjectRow_('Sales', existing.__rowNumber, existing);
   replaceDeductions_(existing.SaleID, sale.deductions);
   appendAudit_(existing.SaleID, 'UPDATE', { before: before, after: stripInternalFields_(existing) }, requestId);
+  if (Array.isArray(payload.laborEntries)) saveLaborForSale_({ saleId: existing.SaleID, laborEntries: payload.laborEntries }, requestId);
   return { updated: true, sale: enrichSale_(existing), warnings: validation.warnings };
 }
 
@@ -1011,13 +1390,13 @@ function voidSale_(payload, requestId) {
 // ===== DashboardService.gs =====
 function getDashboardSummary_(filters) {
   const input = filters || {};
-  const requestedYear = String(input.year || 'all').toLowerCase();
-  const allYears = requestedYear === 'all' || toBoolean_(input.allYears);
-  const year = allYears ? 'all' : requestedYear;
+  const year = String(input.year || Utilities.formatDate(new Date(), APP_CONFIG.timeZone, 'yyyy'));
+  const allYears = year.toLowerCase() === 'all';
   const month = input.month ? ('0' + input.month).slice(-2) : '';
   const all = readSheetObjects_('Sales').filter(function (row) { return row.RecordStatus !== 'VOID'; });
-  const availableYears = Array.from(new Set(all.map(function (row) { return dateKey_(row.SaleDate).slice(0, 4); })
-    .filter(function (value) { return /^\d{4}$/.test(value); }))).sort().reverse();
+  const allLabor = readSheetObjects_('LaborEntries').filter(function (row) {
+    return String(row.RecordStatus || 'ACTIVE') !== 'VOID';
+  });
   const selected = all.filter(function (row) {
     const date = dateKey_(row.SaleDate);
     if (input.fromDate && date < input.fromDate) return false;
@@ -1026,16 +1405,25 @@ function getDashboardSummary_(filters) {
     if (month && date.slice(5, 7) !== month) return false;
     return true;
   });
+  const availableYears = Object.keys(all.reduce(function (map, row) {
+    const value = dateKey_(row.SaleDate).slice(0, 4);
+    if (/^\d{4}$/.test(value)) map[value] = true;
+    return map;
+  }, {})).sort().reverse();
   const totals = summarizeSales_(selected);
+  const laborTotals = summarizeLaborForSales_(selected, allLabor);
   const monthlySeries = [];
   for (let index = 1; index <= 12; index += 1) {
     const key = ('0' + index).slice(-2);
-    const summary = summarizeSales_(all.filter(function (row) {
+    const monthRows = all.filter(function (row) {
       const date = dateKey_(row.SaleDate);
       return allYears ? date.slice(5, 7) === key : date.slice(0, 7) === year + '-' + key;
-    }));
+    });
+    const summary = summarizeSales_(monthRows);
+    const monthLabor = summarizeLaborForSales_(monthRows, allLabor);
     monthlySeries.push({ month: key, weightKg: summary.totalWeightKg, revenue: summary.totalRevenue,
-      averagePricePerKg: summary.averagePricePerKg, saleCount: summary.saleCount });
+      averagePricePerKg: summary.averagePricePerKg, saleCount: summary.saleCount,
+      laborCost: monthLabor.totalLaborCost, netAfterLabor: monthLabor.netAfterLabor });
   }
   const buyerMap = {};
   selected.forEach(function (row) {
@@ -1045,11 +1433,14 @@ function getDashboardSummary_(filters) {
   });
   const buyerComparison = Object.keys(buyerMap).map(function (name) {
     const summary = summarizeSales_(buyerMap[name]);
+    const labor = summarizeLaborForSales_(buyerMap[name], allLabor);
     return { buyerName: name, totalWeightKg: summary.totalWeightKg, totalRevenue: summary.totalRevenue,
-      averagePricePerKg: summary.averagePricePerKg, saleCount: summary.saleCount };
+      averagePricePerKg: summary.averagePricePerKg, saleCount: summary.saleCount,
+      totalLaborCost: labor.totalLaborCost, netAfterLabor: labor.netAfterLabor };
   }).sort(function (a, b) { return b.totalRevenue - a.totalRevenue; });
   return Object.assign({ year: year, allYears: allYears, availableYears: availableYears,
-    month: month || null, monthlySeries: monthlySeries, buyerComparison: buyerComparison }, totals);
+    month: month || null, monthlySeries: monthlySeries,
+    buyerComparison: buyerComparison }, totals, laborTotals);
 }
 
 function summarizeSales_(rows) {
@@ -1062,6 +1453,23 @@ function summarizeSales_(rows) {
   return { totalWeightKg: Math.round(weight * 100) / 100, totalWeightTon: Math.round(weight / 10) / 100,
     totalRevenue: Math.round(revenue * 100) / 100, averagePricePerKg: weight ? Math.round(weightedPrice / weight * 100) / 100 : 0,
     saleCount: rows.length };
+}
+
+function summarizeLaborForSales_(saleRows, laborRows) {
+  const saleIds = {};
+  let revenue = 0;
+  (saleRows || []).forEach(function (row) {
+    saleIds[String(row.SaleID)] = true;
+    revenue += toNumber_(row.NetAmount, 0) || 0;
+  });
+  const entries = (laborRows || []).filter(function (row) { return saleIds[String(row.SaleID)]; });
+  const summary = summarizeLaborEntries_(entries);
+  return {
+    totalLaborCost: summary.totalLaborCost,
+    laborAmountPaid: summary.amountPaid,
+    laborBalanceDue: summary.balanceDue,
+    netAfterLabor: roundMoney_(revenue - summary.totalLaborCost)
+  };
 }
 
 // ===== HealthService.gs =====
@@ -1114,6 +1522,13 @@ function routeRequest_(method, action, payload, requestId) {
   if (normalized === 'sales.get') return apiSuccess_(getSale_(payload.saleId), requestId);
   if (normalized === 'dashboard.summary') return apiSuccess_(getDashboardSummary_(payload), requestId);
   if (normalized === 'buyers.list') return apiSuccess_(listBuyers_(), requestId);
+  if (normalized === 'contractors.list') return apiSuccess_(listContractors_(payload), requestId);
+  if (normalized === 'contractors.create' && method === 'POST') return apiSuccess_(createContractor_(payload), requestId);
+  if (normalized === 'contractors.update' && method === 'POST') return apiSuccess_(updateContractor_(payload), requestId);
+  if (normalized === 'labor.list') return apiSuccess_(listLaborEntries_(payload), requestId);
+  if (normalized === 'labor.save' && method === 'POST') return apiSuccess_(saveLaborForSale_(payload, requestId), requestId);
+  if (normalized === 'labor.payments.list') return apiSuccess_(listLaborPayments_(payload), requestId);
+  if (normalized === 'labor.payments.create' && method === 'POST') return apiSuccess_(createLaborPayment_(payload, requestId), requestId);
   throw new AppError('INVALID_ACTION', 'ไม่รองรับ action: ' + (normalized || '(empty)'), {
     method: method,
     action: normalized
@@ -1121,12 +1536,80 @@ function routeRequest_(method, action, payload, requestId) {
 }
 
 // ===== Setup.gs =====
+function createSpreadsheetBackupForMigration_() {
+  const properties = PropertiesService.getScriptProperties();
+  const existingBackupId = properties.getProperty(SCRIPT_PROPERTY_KEYS.laborMigrationBackupId);
+  if (existingBackupId) {
+    try {
+      const existingFile = DriveApp.getFileById(existingBackupId);
+      return { fileId: existingFile.getId(), name: existingFile.getName(), reused: true };
+    } catch (ignore) {
+      properties.deleteProperty(SCRIPT_PROPERTY_KEYS.laborMigrationBackupId);
+    }
+  }
+  const config = getRuntimeConfig_();
+  const source = DriveApp.getFileById(config.spreadsheetId);
+  const destination = DriveApp.getFolderById(config.projectFolderId);
+  const backupName = source.getName() + ' - Backup before labor v1.3.0 - ' +
+    Utilities.formatDate(new Date(), APP_CONFIG.timeZone, 'yyyyMMdd-HHmmss');
+  const backup = source.makeCopy(backupName, destination);
+  properties.setProperty(SCRIPT_PROPERTY_KEYS.laborMigrationBackupId, backup.getId());
+  return { fileId: backup.getId(), name: backup.getName(), reused: false };
+}
+
+function upgradeLaborSystem() {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  runtimeWriteLockHeld_ = true;
+  try {
+    resetRuntimeCaches_();
+    const backup = createSpreadsheetBackupForMigration_();
+    const sheetChanges = ensureRequiredSheets_();
+    resetRuntimeCaches_();
+    const schema = validateDatabaseSchema_();
+    if (!schema.valid) {
+      throw new AppError('INVALID_SCHEMA', 'สร้างโครงสร้างระบบทีมและค่าแรงไม่สำเร็จครบถ้วน', schema.sheets);
+    }
+    const alreadyApplied = readSheetObjects_('SchemaMigrations').filter(function (row) {
+      return String(row.Version) === APP_CONFIG.version && String(row.Status) === 'APPLIED';
+    })[0];
+    if (!alreadyApplied) {
+      appendObjectRow_('SchemaMigrations', {
+        MigrationID: createId_('MIG'), Version: APP_CONFIG.version,
+        Description: 'Add contractor, labor entry and labor payment management',
+        Status: 'APPLIED', BackupFileID: backup.fileId, AppliedAt: nowIso_()
+      });
+    }
+    const properties = PropertiesService.getScriptProperties();
+    const setupAt = nowIso_();
+    properties.setProperties({ SETUP_VERSION: APP_CONFIG.version, SETUP_AT: setupAt }, false);
+    const result = {
+      ok: true,
+      version: APP_CONFIG.version,
+      spreadsheetId: schema.spreadsheetId,
+      spreadsheetName: schema.spreadsheetName,
+      backup: backup,
+      sheetChanges: sheetChanges,
+      schemaValid: schema.valid,
+      alreadyApplied: Boolean(alreadyApplied),
+      upgradedAt: setupAt
+    };
+    console.log(safeJsonStringify_(result));
+    return result;
+  } finally {
+    runtimeWriteLockHeld_ = false;
+    lock.releaseLock();
+  }
+}
+
 function setupProject() {
   const properties = PropertiesService.getScriptProperties();
   properties.setProperties({
     SPREADSHEET_ID: APP_CONFIG.spreadsheetId,
     PROJECT_FOLDER_ID: APP_CONFIG.projectFolderId
   }, false);
+  const upgrade = upgradeLaborSystem();
+  resetRuntimeCaches_();
   const schema = validateDatabaseSchema_();
   if (!schema.valid) {
     throw new AppError('INVALID_SCHEMA', 'โครงสร้าง Google Sheets ไม่ตรงกับระบบ', schema.sheets);
@@ -1147,6 +1630,7 @@ function setupProject() {
     spreadsheetName: schema.spreadsheetName,
     receiptsFolderId: receiptsFolder.getId(),
     currentMonthFolderId: monthFolder.getId(),
+    laborUpgrade: upgrade,
     timeZone: APP_CONFIG.timeZone,
     setupAt: setupAt,
     geminiConfigured: getRuntimeConfig_().geminiConfigured
@@ -1177,7 +1661,7 @@ function resetProjectSetupForDevelopment() {
 function runPhase1Tests() {
   const tests = [
     testNormalizeAction_, testValidateHeaders_, testResponseEnvelope_, testDatabaseSchema_,
-    testSettings_, testReceiptFolders_, testHealth_
+    testSettings_, testReceiptFolders_, testHealth_, testLaborCalculations_
   ];
   const results = tests.map(function (test) {
     const startedAt = Date.now();
@@ -1240,6 +1724,20 @@ function testHealth_() {
   assertTrue_(health.checks.spreadsheet, 'health spreadsheet');
   assertTrue_(health.checks.schema, 'health schema');
   assertTrue_(health.checks.settings, 'health settings');
+}
+
+function testLaborCalculations_() {
+  const team = normalizeLaborDraft_({
+    workMode: 'TEAM', contractorName: 'ทีมทดสอบ', calculationMethod: 'PER_KG', rateSnapshot: 1.5
+  }, { payableWeightKg: 775 });
+  assertEqual_(1162.5, team.laborCost, 'team labor cost');
+  const individual = normalizeLaborDraft_({
+    workMode: 'INDIVIDUAL', contractorName: 'คนงานทดสอบ', calculationMethod: 'PER_PERSON',
+    headcount: 3, rateSnapshot: 300
+  }, { payableWeightKg: 775 });
+  assertEqual_(900, individual.laborCost, 'individual labor cost');
+  const selfManaged = normalizeLaborDraft_({ workMode: 'SELF' }, { payableWeightKg: 775 });
+  assertEqual_(0, selfManaged.laborCost, 'self-managed labor cost');
 }
 
 function runV1SmokeTests() {

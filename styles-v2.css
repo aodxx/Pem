@@ -148,6 +148,37 @@ label.low-confidence input { border-color: #d66b43; background: #fff5ef; box-sha
 .money-fieldset input { border-color: rgba(55, 91, 45, .15); }
 .deduction-row { display: grid; grid-template-columns: 1fr 1fr auto; gap: 8px; margin-bottom: 9px; padding: 10px; border-radius: 15px; background: #f1f3ed; }
 .deduction-row .remove { width: 40px; border: 0; border-radius: 12px; color: var(--danger); background: #f7ded9; }
+.fieldset-help { margin: -3px 0 13px; color: var(--muted); font-size: .73rem; }
+.labor-fieldset { padding: 16px !important; border: 1px solid rgba(33,96,71,.12) !important; border-radius: 20px; background: linear-gradient(145deg, rgba(240,246,229,.9), rgba(255,253,247,.98)); }
+.labor-fieldset .legend-row small { color: var(--forest-700); font-size: .68rem; font-weight: 900; }
+.labor-actions { display: grid; grid-template-columns: repeat(3,1fr); gap: 7px; margin-bottom: 13px; }
+.labor-mode-button { min-width: 0; min-height: 68px; padding: 10px 7px; border: 1px solid rgba(33,96,71,.13); border-radius: 14px; color: var(--forest-900); background: var(--paper); cursor: pointer; }
+.labor-mode-button strong,.labor-mode-button small { display: block; }
+.labor-mode-button strong { font-size: .74rem; }
+.labor-mode-button small { margin-top: 4px; color: var(--muted); font-size: .58rem; }
+.labor-mode-button:hover,.labor-mode-button:focus-visible { border-color: var(--forest-700); background: var(--leaf-soft); }
+.labor-entries-list { display: grid; gap: 10px; }
+.labor-entry-row { padding: 13px; border: 1px solid rgba(33,96,71,.12); border-radius: 16px; background: var(--paper); box-shadow: 0 5px 18px rgba(12,49,34,.06); }
+.labor-entry-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 11px; }
+.labor-entry-heading strong,.labor-entry-heading small { display: block; }
+.labor-entry-heading strong { color: var(--forest-900); font-size: .88rem; }
+.labor-entry-heading small { margin-top: 2px; color: var(--muted); font-size: .64rem; }
+.remove-labor-entry { width: 35px; height: 35px; flex: 0 0 auto; border: 0; border-radius: 11px; color: var(--danger); background: #f7ded9; font-size: 1.2rem; cursor: pointer; }
+.contractor-picker { display: grid; grid-template-columns: 1fr auto; align-items: end; gap: 8px; }
+.add-contractor-inline { min-height: 50px; padding: 8px 10px; border: 0; border-radius: 12px; color: var(--forest-700); background: var(--leaf-soft); font-size: .68rem; font-weight: 900; white-space: nowrap; cursor: pointer; }
+.labor-rate-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; margin-top: 10px; }
+.labor-rate-grid input,.labor-rate-grid select { min-height: 46px; }
+.labor-row-total { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 11px; padding-top: 10px; border-top: 1px dashed var(--line); }
+.labor-row-total span { color: var(--muted); font-size: .68rem; font-weight: 800; }
+.labor-row-total strong { color: var(--forest-700); font-size: 1rem; }
+.labor-total-panel { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 12px; }
+.labor-total-panel > div { padding: 11px; border-radius: 13px; background: rgba(255,255,255,.72); }
+.labor-total-panel span,.labor-total-panel strong { display: block; }
+.labor-total-panel span { color: var(--muted); font-size: .62rem; font-weight: 800; }
+.labor-total-panel strong { margin-top: 4px; color: var(--forest-800); font-size: .9rem; }
+.labor-total-panel .remaining { grid-column: 1 / -1; color: var(--white); background: var(--forest-900); }
+.labor-total-panel .remaining span { color: rgba(255,255,255,.65); }
+.labor-total-panel .remaining strong { color: var(--leaf); font-size: 1.2rem; }
 .sticky-actions { position: sticky; bottom: 86px; z-index: 12; display: grid; grid-template-columns: .72fr 1.5fr; gap: 10px; margin: 25px -9px -9px; padding: 10px; border: 1px solid rgba(30,75,55,.1); border-radius: 19px; background: rgba(255,253,247,.9); box-shadow: 0 15px 35px rgba(9,39,27,.12); backdrop-filter: blur(14px); }
 .section-title { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; margin: 14px 2px 21px; }
 .section-title select { width: auto; min-width: 108px; color: var(--forest-800); background: var(--paper); font-weight: 900; }
@@ -163,6 +194,9 @@ label.low-confidence input { border-color: #d66b43; background: #fff5ef; box-sha
 .summary-card.weight { background: var(--leaf); border: 0; }
 .summary-card.weight span, .summary-card.weight small { color: rgba(7,27,21,.64); }
 .summary-card.price strong, .summary-card.count strong { color: var(--forest-700); }
+.summary-card.labor { background: #fff0c8; }
+.summary-card.labor strong { color: #8a5707; }
+.summary-card.gross-revenue strong { color: var(--forest-700); font-size: 1.28rem; }
 .data-panel { margin-top: 15px; }
 .chart { display: flex; height: 235px; align-items: flex-end; gap: 6px; padding-top: 18px; }
 .chart-column { display: flex; min-width: 0; flex: 1; height: 100%; flex-direction: column; justify-content: flex-end; align-items: center; gap: 7px; }
@@ -206,6 +240,9 @@ label.low-confidence input { border-color: #d66b43; background: #fff5ef; box-sha
 .sale-gap i:first-child::after, .sale-gap i:last-child::after { content: ""; position: absolute; top: 50%; left: 50%; width: 7px; height: 7px; transform: translate(-50%,-50%); border-radius: 50%; background: var(--leaf-strong); }
 .sale-gap span { padding: 6px 10px; border: 1px solid rgba(33,96,71,.12); border-radius: 999px; background: var(--leaf-soft); font-size: .67rem; font-weight: 900; white-space: nowrap; }
 .receipt-viewer { width: min(94vw, 820px); height: min(90vh, 860px); margin: auto; padding: 0; overflow: hidden; border: 0; border-radius: 24px; color: var(--ink); background: var(--paper); box-shadow: 0 28px 90px rgba(0,0,0,.36); }
+.contractor-dialog { width: min(94vw, 620px); max-height: min(90vh, 760px); margin: auto; padding: 0; overflow: auto; border: 0; border-radius: 24px; color: var(--ink); background: var(--paper); box-shadow: 0 28px 90px rgba(0,0,0,.36); }
+.contractor-dialog::backdrop { background: rgba(3,18,12,.72); backdrop-filter: blur(5px); }
+.contractor-form-body { display: grid; gap: 13px; padding: 17px; }
 .receipt-viewer::backdrop { background: rgba(3,18,12,.78); backdrop-filter: blur(5px); }
 .viewer-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 15px; padding: 18px 18px 15px; border-bottom: 1px solid var(--line); }
 .viewer-header h2 { margin: 0; font-size: 1.15rem; }
@@ -280,6 +317,8 @@ label.low-confidence input { border-color: #d66b43; background: #fff5ef; box-sha
   .action-arrow { display: none; }
   .alternate-actions { grid-template-columns: 1fr; }
   .form-grid, .form-grid.three { grid-template-columns: 1fr; }
+  .contractor-picker, .labor-rate-grid { grid-template-columns: 1fr; }
+  .add-contractor-inline { width: 100%; }
   .span-2 { grid-column: auto; }
   .summary-card strong { font-size: 1.42rem; }
   .history-main { grid-template-columns: 1fr; }
@@ -296,6 +335,10 @@ label.low-confidence input { border-color: #d66b43; background: #fff5ef; box-sha
   .topbar { background: rgba(12,23,18,.9); }
   .sync-pill { background: rgba(255,255,255,.05); }
   input, select, textarea { color: var(--ink); background: #0e1b15; }
+  .labor-fieldset { background: linear-gradient(145deg, rgba(26,48,37,.96), rgba(19,35,27,.98)); }
+  .labor-total-panel > div { background: rgba(12,23,18,.68); }
+  .labor-entry-row { background: #13231b; }
+  .labor-mode-button { color: var(--ink); background: #13231b; }
   .money-fieldset { background: #192c20; }
   .deduction-row { background: #0e1c16; }
   .sticky-actions { background: rgba(19,35,27,.92); }

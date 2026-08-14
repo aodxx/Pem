@@ -1,6 +1,6 @@
 # PROGRESS
 
-อัปเดตล่าสุด: 2026-08-13
+อัปเดตล่าสุด: 2026-08-14
 
 ## สถานะ
 
@@ -12,14 +12,18 @@
 - Phase 5 — Dashboard / Analytics: **Code completed**
 - Phase 6 — PWA / Offline App Shell: **Code completed**
 - Phase 7 — Static / Unit QA: **Passed; production E2E pending deployment**
+- Phase 8 — Contractor & Labor Management: **Completed and live verified**
 
 ## Live verified foundation
 
 - Backend health status: `ready`
-- Spreadsheet / Schema / Settings / Drive / Gemini: `true`
+- Backend version: `1.3.0`
+- Spreadsheet / Schema / Settings / Drive / Gemini / Access Token: `true`
 - Gemini API key call: passed with model `gemini-3.6-flash`
 - Apps Script deployment URL recorded
-- Setup timestamp: `2026-08-13T08:54:20+07:00`
+- Labor migration: passed with a full spreadsheet backup
+- Apps Script tests: `8 passed / 0 failed`
+- Setup timestamp: `2026-08-14T15:41:02+07:00`
 
 ## V1 implementation
 
@@ -38,25 +42,29 @@
 - Mobile capture/upload/rotate/review/manual entry
 - History, filters, edit, dashboard and installable PWA
 - Draft recovery and offline shell
+- Team/individual master data with auto-fill defaults
+- Multiple labor entries in one sale round
+- Per-kilogram, per-person and self-managed labor calculations
+- Rate snapshots that preserve historical accuracy
+- Unpaid/partial/paid labor status and payment history
+- Dashboard and history totals after labor cost
+- Safe `upgradeLaborSystem()` migration with a full spreadsheet backup
 
 ## Automated verification
 
 - Apps Script bundle syntax: passed
 - Frontend JS and Service Worker syntax: passed
 - Manifest and OAuth scopes: passed
-- Required Backend functions: 14/14
-- Frontend referenced element IDs: 37/37
+- Required Backend functions: 20/20
+- Frontend referenced element IDs: 78/78
 - Secret scan: passed
 - Backend normalization/validation/duplicate/dashboard tests: passed
+- Labor calculation/payment summary tests: passed
 - PWA icon sizes: 192×192 and 512×512
 
-## Pending owner-only production actions
+## Pending production action
 
-1. Replace Apps Script `Code.gs` with V1 bundle
-2. Run `setupV1()` and copy the one-time Access Token
-3. Deploy a new Apps Script version using the existing deployment
-4. Run `testGeminiReceiptFromDrive()` and one full mobile save test
-5. Set GitHub Pages Source to GitHub Actions if not already enabled
+1. Publish Frontend `2.3.0` and run one full mobile save test
 
 ## Resources
 
@@ -67,6 +75,7 @@
 
 ## Versions
 
-- System / Backend / Frontend: `1.0.0`
+- Backend: `1.3.0`
+- Frontend/PWA: `2.3.0`
 - API: `v1`
 - Gemini schema: `1.0.0`
