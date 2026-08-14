@@ -63,6 +63,16 @@ for (const filterDrawerLogic of ['updateFilterDrawerStatus', "$('#history-filter
   if (!app.includes(filterDrawerLogic)) throw new Error(`Missing collapsible filter behavior: ${filterDrawerLogic}`);
 }
 if (!fs.readFileSync('frontend/styles-v2.css', 'utf8').includes('.filter-drawer[open]')) throw new Error('Missing collapsible filter styles');
+for (const saveFeedbackUi of ['save-feedback','save-feedback-title','save-feedback-message','save-feedback-close']) {
+  if (!html.includes(`id="${saveFeedbackUi}"`)) throw new Error(`Missing save feedback UI: ${saveFeedbackUi}`);
+}
+for (const saveFeedbackLogic of ['showSaveFeedback','กำลังบันทึกรายการ','บันทึกสำเร็จ','ส่งเข้า Google Sheets']) {
+  if (!app.includes(saveFeedbackLogic)) throw new Error(`Missing save feedback behavior: ${saveFeedbackLogic}`);
+}
+const styles = fs.readFileSync('frontend/styles-v2.css', 'utf8');
+for (const readabilityStyle of ['.save-feedback.working','.history-card .amount strong','.detail-summary-grid strong','.summary-card strong']) {
+  if (!styles.includes(readabilityStyle)) throw new Error(`Missing readability/save style: ${readabilityStyle}`);
+}
 if (!app.includes('<option value="all">ทุกปี</option>')) throw new Error('Missing all-years dashboard option');
 const ids = [...app.matchAll(/\$\(['"]#([a-zA-Z0-9_-]+)['"]\)/g)].map(match => match[1]);
 for (const id of new Set(ids)) {

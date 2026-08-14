@@ -14,6 +14,7 @@ const QUEUE_DB = 'palm-ledger-offline-v1';
 const QUEUE_STORE = 'pending-saves';
 let queueDbPromise;
 const secretRevealTimers = new Map();
+let saveFeedbackTimer;
 
 document.addEventListener('DOMContentLoaded', init);
 
@@ -21,7 +22,7 @@ function init() {
   $('#api-url').value = CONFIG.apiUrl;
   $('#access-token').value = state.accessToken;
   $('#app-version').textContent = CONFIG.version;
-  bindNavigation(); bindCapture(); bindForm(); bindLabor(); bindSettings(); bindFilters(); setupInstall();
+  bindNavigation(); bindCapture(); bindForm(); bindLabor(); bindSettings(); bindFilters(); bindSaveFeedback(); setupInstall();
   bindReceiptViewer(); bindSaleDetail();
   populateYears(); updateConnectionUI(); restoreDraft();
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js').catch(() => {});
@@ -717,22 +718,33 @@ async function saveSale(event, duplicateOverride = false) {
   try { laborEntries = collectLaborEntries(); }
   catch (error) { handleError(error); $('#labor-fieldset').scrollIntoView({ behavior: 'smooth', block: 'start' }); return; }
   const contractorUpdates = collectContractorUpdates();
+  const saveButton = $('#save-button');
+  saveButton.disabled = true;
+  saveButton.setAttribute('aria-busy', 'true');
   if (state.editingSaleId) {
-    setLoading(true, 'กำลังบันทึกการแก้ไข…');
+    saveButton.textContent = 'กำลังบันทึกการแก้ไข…';
+    setSyncStatus('กำลังบันทึกการแก้ไข…');
+    showSaveFeedback('working', 'กำลังบันทึกการแก้ไข', 'กรุณารอสักครู่ ระบบกำลังตรวจสอบและอัปเดตข้อมูล');
     try {
       const data = await api('sales.update', { saleId: state.editingSaleId, expectedUpdatedAt: state.expectedUpdatedAt, sale, laborEntries }, true, { timeoutMs: 45000 });
       await applyContractorUpdates(contractorUpdates);
       localStorage.removeItem('palmDraft'); resetCapture();
-      toast(data.updated ? 'แก้ไขข้อมูลเรียบร้อยแล้ว' : 'บันทึกเรียบร้อยแล้ว');
       await showView('history');
-    } catch (error) { handleError(error); }
-    finally { setLoading(false); }
+      showSaveFeedback('success', data.updated ? 'แก้ไขข้อมูลสำเร็จ' : 'บันทึกข้อมูลสำเร็จ', 'ข้อมูลล่าสุดแสดงอยู่ในหน้ารายการแล้ว', 4200);
+    } catch (error) {
+      showSaveFeedback('error', 'แก้ไขข้อมูลไม่สำเร็จ', error.message || 'เกิดข้อผิดพลาด กรุณาลองอีกครั้ง', 6500);
+      handleError(error);
+    } finally {
+      saveButton.disabled = false;
+      saveButton.removeAttribute('aria-busy');
+      saveButton.innerHTML = 'ยืนยันและบันทึก <span>→</span>';
+    }
     return;
   }
 
-  const saveButton = $('#save-button');
-  saveButton.disabled = true;
   saveButton.textContent = 'กำลังเก็บไว้ในเครื่อง…';
+  setSyncStatus('กำลังบันทึกรายการ…');
+  showSaveFeedback('working', 'กำลังบันทึกรายการ', 'กำลังเก็บข้อมูลและภาพใบชั่งไว้ในเครื่องอย่างปลอดภัย');
   try {
     const image = state.previewDataUrl ? await imagePayload(state.previewDataUrl) : null;
     const idempotencyKey = getIdempotencyKey();
@@ -750,13 +762,15 @@ async function saveSale(event, duplicateOverride = false) {
     localStorage.removeItem('palmIdempotencyKey');
     resetCapture();
     await refreshQueueUI();
-    toast('รับข้อมูลแล้ว — ปิดหน้าได้ ระบบจะส่งให้อัตโนมัติ');
+    showSaveFeedback('queued', 'เก็บรายการไว้ในเครื่องแล้ว', 'ระบบกำลังส่งเข้า Google Sheets อัตโนมัติ คุณปิดหน้านี้ได้', 5200);
     processPendingSaves(true);
   } catch (error) {
+    showSaveFeedback('error', 'บันทึกรายการไม่สำเร็จ', 'ข้อมูลยังอยู่ในแบบฟอร์ม กรุณาอย่าเพิ่งปิดหน้านี้แล้วลองอีกครั้ง', 7000);
     handleError(appError('LOCAL_SAVE_FAILED', 'เก็บรายการไว้ในเครื่องไม่สำเร็จ กรุณาอย่าเพิ่งปิดหน้านี้', { message: error.message }));
   } finally {
     saveButton.disabled = false;
-    saveButton.textContent = 'ยืนยันและบันทึก';
+    saveButton.removeAttribute('aria-busy');
+    saveButton.innerHTML = 'ยืนยันและบันทึก <span>→</span>';
   }
 }
 
@@ -1087,7 +1101,9 @@ async function processPendingSaves(interactive = false) {
               continue;
             }
             job.status = 'blocked'; job.lastError = error.message; job.updatedAt = Date.now();
-            await queuePut(job); sending = false; continue;
+            await queuePut(job);
+            if (interactive) showSaveFeedback('queued', 'รายการยังไม่ถูกส่ง', 'พบข้อมูลคล้ายรายการเดิม รายการนี้ยังเก็บอยู่ในเครื่องและรอให้คุณยืนยัน', 7000);
+            sending = false; continue;
           }
           if (['NETWORK_ERROR', 'REQUEST_TIMEOUT', 'INVALID_RESPONSE', 'RATE_LIMITED'].includes(error.code)) {
             const saved = await verifyQueuedSave(job);
@@ -1095,12 +1111,14 @@ async function processPendingSaves(interactive = false) {
             else {
               job.status = 'pending'; job.lastError = error.message; job.updatedAt = Date.now();
               await queuePut(job);
+              if (interactive) showSaveFeedback('queued', 'เก็บรายการไว้แล้ว แต่ยังส่งไม่สำเร็จ', 'ระบบจะส่งเข้า Google Sheets ให้อัตโนมัติเมื่อการเชื่อมต่อพร้อม', 6500);
             }
             sending = false; continue;
           }
           job.status = error.code === 'UNAUTHORIZED' ? 'pending' : 'error';
           job.lastError = error.message; job.updatedAt = Date.now();
           await queuePut(job); sending = false;
+          if (interactive) showSaveFeedback('error', 'ส่งข้อมูลไม่สำเร็จ', `${error.message || 'เกิดข้อผิดพลาด'} — รายการยังเก็บอยู่ในเครื่อง`, 7000);
           if (error.code === 'UNAUTHORIZED') { handleError(error); return; }
         }
       }
@@ -1108,7 +1126,7 @@ async function processPendingSaves(interactive = false) {
   } finally {
     state.syncInProgress = false;
     const remaining = await refreshQueueUI();
-    if (savedCount) toast(`ส่งเข้า Google Sheets สำเร็จ ${savedCount} รายการ`);
+    if (savedCount) showSaveFeedback('success', 'บันทึกสำเร็จ', `ส่งเข้า Google Sheets เรียบร้อยแล้ว ${savedCount} รายการ`, 4500);
     if (!remaining.length && $('#view-history').classList.contains('active')) loadHistory();
   }
 }
@@ -1122,6 +1140,22 @@ function ensureConnected(showMessage = true) {
 function updateConnectionUI() { $('#setup-alert').classList.toggle('hidden', Boolean(state.accessToken)); setSyncStatus(state.accessToken ? 'เชื่อมต่อแล้ว' : 'รอการเชื่อมต่อ'); }
 function setSyncStatus(text) { $('#sync-status').textContent = text; }
 function showValidation(validation) { const warnings = validation?.warnings || []; const errors = validation?.errors || []; $('#validation-messages').innerHTML = [...errors.map(x=>`<div class="notice error">${escapeHtml(x.message)}</div>`),...warnings.map(x=>`<div class="notice warning">${escapeHtml(x.message || x)}</div>`)].join(''); }
+function bindSaveFeedback() { $('#save-feedback-close').addEventListener('click', hideSaveFeedback); }
+function showSaveFeedback(status, title, message, autoHideMs = 0) {
+  const node = $('#save-feedback');
+  clearTimeout(saveFeedbackTimer);
+  node.className = `save-feedback ${status}`;
+  node.setAttribute('aria-busy', status === 'working' ? 'true' : 'false');
+  $('#save-feedback-title').textContent = title;
+  $('#save-feedback-message').textContent = message;
+  $('#save-feedback-close').classList.toggle('hidden', status === 'working');
+  if (autoHideMs) saveFeedbackTimer = setTimeout(hideSaveFeedback, autoHideMs);
+}
+function hideSaveFeedback() {
+  clearTimeout(saveFeedbackTimer);
+  $('#save-feedback').classList.add('hidden');
+  $('#save-feedback').setAttribute('aria-busy', 'false');
+}
 function setLoading(show, text) { $('#loading').classList.toggle('hidden', !show); if (text) $('#loading-text').textContent = text; }
 function toast(message) { const node=$('#toast'); node.textContent=message; node.classList.remove('hidden'); clearTimeout(toast.timer); toast.timer=setTimeout(()=>node.classList.add('hidden'),3500); }
 function handleError(error) { console.error(error); toast(error.message || 'เกิดข้อผิดพลาด'); if (error.code === 'UNAUTHORIZED') showView('settings'); }

@@ -54,6 +54,8 @@
 - Settings moved behind the PL profile zone; bottom navigation reduced to three primary destinations
 - Web App URL and Access Token masked by default with timed reveal controls and automatic re-hiding
 - History search and filters collapsed by default, with an active-filter count in the compact bar
+- Important prices, weights, buyer names and report totals enlarged for mobile readability
+- Persistent save feedback now distinguishes saving, locally queued, successfully synced and failed states
 - Dashboard and history totals after labor cost
 - Safe `upgradeLaborSystem()` migration with a full spreadsheet backup
 
@@ -84,6 +86,6 @@
 ## Versions
 
 - Backend: `1.3.0`
-- Frontend/PWA: `2.4.2`
+- Frontend/PWA: `2.5.0`
 - API: `v1`
 - Gemini schema: `1.0.0`
