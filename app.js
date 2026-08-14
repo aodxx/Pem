@@ -15,6 +15,7 @@ const QUEUE_STORE = 'pending-saves';
 let queueDbPromise;
 const secretRevealTimers = new Map();
 let saveFeedbackTimer;
+let loadingAnimation;
 
 document.addEventListener('DOMContentLoaded', init);
 
@@ -24,7 +25,7 @@ function init() {
   $('#app-version').textContent = CONFIG.version;
   bindNavigation(); bindCapture(); bindForm(); bindLabor(); bindSettings(); bindFilters(); bindSaveFeedback(); setupInstall();
   bindReceiptViewer(); bindSaleDetail();
-  populateYears(); updateConnectionUI(); restoreDraft();
+  initLoadingAnimation(); populateYears(); updateConnectionUI(); restoreDraft();
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js').catch(() => {});
   initSaveQueue().then(async () => { await refreshQueueUI(); processPendingSaves(false); }).catch(() => {});
   if (state.accessToken) loadContractors().catch(() => {});
@@ -1140,6 +1141,26 @@ function ensureConnected(showMessage = true) {
 function updateConnectionUI() { $('#setup-alert').classList.toggle('hidden', Boolean(state.accessToken)); setSyncStatus(state.accessToken ? 'เชื่อมต่อแล้ว' : 'รอการเชื่อมต่อ'); }
 function setSyncStatus(text) { $('#sync-status').textContent = text; }
 function showValidation(validation) { const warnings = validation?.warnings || []; const errors = validation?.errors || []; $('#validation-messages').innerHTML = [...errors.map(x=>`<div class="notice error">${escapeHtml(x.message)}</div>`),...warnings.map(x=>`<div class="notice warning">${escapeHtml(x.message || x)}</div>`)].join(''); }
+function initLoadingAnimation() {
+  const container = $('#loading-animation');
+  if (!container || !window.lottie) return;
+  try {
+    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    loadingAnimation = window.lottie.loadAnimation({
+      container,
+      renderer: 'svg',
+      loop: true,
+      autoplay: !reduceMotion,
+      path: 'assets/loading.json',
+      rendererSettings: { preserveAspectRatio: 'xMidYMid meet', progressiveLoad: true }
+    });
+    loadingAnimation.addEventListener('DOMLoaded', () => {
+      container.classList.add('ready');
+      if (reduceMotion || $('#loading').classList.contains('hidden')) loadingAnimation.goToAndStop(0, true);
+    });
+    loadingAnimation.addEventListener('data_failed', () => container.classList.remove('ready'));
+  } catch (error) { console.warn('Unable to start loading animation', error); }
+}
 function bindSaveFeedback() { $('#save-feedback-close').addEventListener('click', hideSaveFeedback); }
 function showSaveFeedback(status, title, message, autoHideMs = 0) {
   const node = $('#save-feedback');
@@ -1156,7 +1177,15 @@ function hideSaveFeedback() {
   $('#save-feedback').classList.add('hidden');
   $('#save-feedback').setAttribute('aria-busy', 'false');
 }
-function setLoading(show, text) { $('#loading').classList.toggle('hidden', !show); if (text) $('#loading-text').textContent = text; }
+function setLoading(show, text) {
+  $('#loading').classList.toggle('hidden', !show);
+  if (text) $('#loading-text').textContent = text;
+  if (loadingAnimation) {
+    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (show && !reduceMotion) loadingAnimation.goToAndPlay(0, true);
+    else loadingAnimation.goToAndStop(0, true);
+  }
+}
 function toast(message) { const node=$('#toast'); node.textContent=message; node.classList.remove('hidden'); clearTimeout(toast.timer); toast.timer=setTimeout(()=>node.classList.add('hidden'),3500); }
 function handleError(error) { console.error(error); toast(error.message || 'เกิดข้อผิดพลาด'); if (error.code === 'UNAUTHORIZED') showView('settings'); }
 function appError(code,message,details){const error=new Error(message);error.code=code;error.details=details;return error;}

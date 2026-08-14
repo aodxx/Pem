@@ -56,6 +56,7 @@
 - History search and filters collapsed by default, with an active-filter count in the compact bar
 - Important prices, weights, buyer names and report totals enlarged for mobile readability
 - Persistent save feedback now distinguishes saving, locally queued, successfully synced and failed states
+- Default CSS spinner replaced by the owner's Lottie loading animation, bundled locally for offline PWA use
 - Dashboard and history totals after labor cost
 - Safe `upgradeLaborSystem()` migration with a full spreadsheet backup
 
@@ -86,6 +87,6 @@
 ## Versions
 
 - Backend: `1.3.0`
-- Frontend/PWA: `2.5.0`
+- Frontend/PWA: `2.5.1`
 - API: `v1`
 - Gemini schema: `1.0.0`

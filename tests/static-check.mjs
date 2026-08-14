@@ -69,6 +69,12 @@ for (const saveFeedbackUi of ['save-feedback','save-feedback-title','save-feedba
 for (const saveFeedbackLogic of ['showSaveFeedback','กำลังบันทึกรายการ','บันทึกสำเร็จ','ส่งเข้า Google Sheets']) {
   if (!app.includes(saveFeedbackLogic)) throw new Error(`Missing save feedback behavior: ${saveFeedbackLogic}`);
 }
+for (const loadingUi of ['loading-animation','assets/lottie-light.min.js']) {
+  if (!html.includes(loadingUi)) throw new Error(`Missing Lottie loading UI: ${loadingUi}`);
+}
+for (const loadingLogic of ['initLoadingAnimation','assets/loading.json','goToAndPlay','prefers-reduced-motion']) {
+  if (!app.includes(loadingLogic)) throw new Error(`Missing Lottie loading behavior: ${loadingLogic}`);
+}
 const styles = fs.readFileSync('frontend/styles-v2.css', 'utf8');
 for (const readabilityStyle of ['.save-feedback.working','.history-card .amount strong','.detail-summary-grid strong','.summary-card strong']) {
   if (!styles.includes(readabilityStyle)) throw new Error(`Missing readability/save style: ${readabilityStyle}`);
@@ -91,6 +97,14 @@ for (const icon of manifestWeb.icons) {
 for (const file of ['frontend/styles-v2.css','frontend/sw.js','frontend/icons/icon.svg']) {
   if (!fs.existsSync(file)) throw new Error(`Missing frontend asset: ${file}`);
 }
+for (const file of ['frontend/assets/lottie-light.min.js','frontend/assets/loading.json','frontend/assets/lottie-web.LICENSE.md']) {
+  if (!fs.existsSync(file)) throw new Error(`Missing Lottie asset: ${file}`);
+}
+const loadingAnimation = JSON.parse(fs.readFileSync('frontend/assets/loading.json', 'utf8'));
+if (loadingAnimation.w !== 124 || loadingAnimation.h !== 124 || !Array.isArray(loadingAnimation.layers) || !loadingAnimation.layers.length) {
+  throw new Error('Invalid uploaded Lottie loading animation');
+}
+if (!fs.readFileSync('frontend/sw.js', 'utf8').includes('assets/loading.json')) throw new Error('Lottie animation is missing from the offline shell');
 
 console.log(JSON.stringify({
   ok: true,

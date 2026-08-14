@@ -246,8 +246,11 @@
     <span class="save-feedback-copy"><strong id="save-feedback-title">กำลังบันทึก…</strong><small id="save-feedback-message">กรุณารอสักครู่</small></span>
     <button id="save-feedback-close" type="button" aria-label="ปิดข้อความสถานะ">×</button>
   </section>
-  <div id="loading" class="loading hidden" role="status"><div class="spinner"></div><strong id="loading-text">กำลังทำงาน…</strong></div>
+  <div id="loading" class="loading hidden" role="status">
+    <div id="loading-animation" class="loading-animation" aria-hidden="true"><div class="spinner loading-fallback"></div></div>
+    <strong id="loading-text">กำลังทำงาน…</strong>
+  </div>
   <div id="toast" class="toast hidden" role="status"></div>
-  <script src="config.js"></script><script src="app.js" defer></script>
+  <script src="assets/lottie-light.min.js"></script><script src="config.js"></script><script src="app.js" defer></script>
 </body>
 </html>

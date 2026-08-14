@@ -327,6 +327,9 @@ label.low-confidence input { border-color: #d66b43; background: #fff5ef; box-sha
 .nav-item.active { color: var(--forest-950); background: var(--leaf); }
 .nav-item.capture-nav .nav-icon { font-size: 1.38rem; }
 .loading { position: fixed; z-index: 80; inset: 0; display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 14px; color: var(--white); background: rgba(7, 27, 21, .82); backdrop-filter: blur(7px); }
+.loading-animation { position: relative; display: grid; place-items: center; width: 124px; height: 124px; }
+.loading-animation > svg { display: block; width: 100% !important; height: 100% !important; filter: drop-shadow(0 12px 30px rgba(0,0,0,.2)); }
+.loading-animation.ready .loading-fallback { display: none; }
 .spinner { width: 49px; height: 49px; border: 4px solid rgba(255,255,255,.2); border-top-color: var(--leaf); border-radius: 50%; animation: spin .8s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 .toast { position: fixed; z-index: 90; right: 16px; bottom: 94px; left: 16px; max-width: 600px; margin: auto; padding: 15px 16px; border: 1px solid rgba(185,243,75,.16); border-radius: 16px; color: var(--white); background: var(--forest-950); box-shadow: var(--shadow-lg); text-align: center; font-weight: 800; }
