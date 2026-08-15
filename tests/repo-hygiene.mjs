@@ -2,6 +2,7 @@ import fs from 'node:fs';
 
 const required = [
   'README.md', 'CONTRIBUTING.md', 'package.json',
+  'index.html', '.nojekyll',
   'frontend/index.html', 'frontend/app.js', 'frontend/styles-v2.css', 'frontend/sw.js',
   'apps-script/Code.gs', 'apps-script/appsscript.json',
   'docs/API.md', 'docs/INSTALL.md', 'docs/PROGRESS.md', 'docs/NEXT_FEATURES.md'
@@ -10,8 +11,13 @@ for (const path of required) {
   if (!fs.existsSync(path)) throw new Error(`Missing canonical project file: ${path}`);
 }
 
+const rootEntrypoint = fs.readFileSync('index.html', 'utf8');
+if (!rootEntrypoint.includes('./frontend/')) {
+  throw new Error('Root index.html must remain a thin GitHub Pages redirect to ./frontend/');
+}
+
 const forbiddenRootCopies = [
-  'index.html', 'app.js', 'config.js', 'styles.css', 'styles-v2.css',
+  'app.js', 'config.js', 'styles.css', 'styles-v2.css',
   'sw.js', 'manifest.webmanifest', 'assets', 'icons', 'frontend/styles.css'
 ];
 for (const path of forbiddenRootCopies) {
