@@ -26,6 +26,9 @@ for (const scope of ['spreadsheets','drive','script.external_request']) {
 
 const html = fs.readFileSync('frontend/index.html', 'utf8');
 const app = fs.readFileSync('frontend/app.js', 'utf8');
+const styleFiles = ['frontend/styles-v2.css','frontend/styles-core-v2.5.2.css','frontend/home-professional.css'].filter(path => fs.existsSync(path));
+const styles = styleFiles.map(path => fs.readFileSync(path, 'utf8')).join('\n');
+
 for (const reliabilityMarker of ['indexedDB.open', 'processPendingSaves', "api('sales.status'", 'idempotencyKey']) {
   if (!app.includes(reliabilityMarker)) throw new Error(`Missing reliable-save marker: ${reliabilityMarker}`);
 }
@@ -41,7 +44,7 @@ for (const receiptViewerLogic of ['openReceiptViewer', 'ImageFileID', '/preview'
 for (const timelineLogic of ['saleDateValue', 'renderSaleGap', 'b.date - a.date', 'ระยะรอบ']) {
   if (!app.includes(timelineLogic)) throw new Error(`Missing chronological timeline logic: ${timelineLogic}`);
 }
-if (!fs.readFileSync('frontend/styles-v2.css', 'utf8').includes('.sale-gap')) throw new Error('Missing sale timeline connector styles');
+if (!styles.includes('.sale-gap')) throw new Error('Missing sale timeline connector styles');
 for (const closeoutLogic of ['openSaleDetail', 'saveLaborPayment', 'collectContractorUpdates', 'filterContractorSelect', 'paymentStatusLabel']) {
   if (!app.includes(closeoutLogic)) throw new Error(`Missing closeout feature logic: ${closeoutLogic}`);
 }
@@ -62,7 +65,7 @@ for (const filterDrawerUi of ['history-filter-drawer','filter-active-count']) {
 for (const filterDrawerLogic of ['updateFilterDrawerStatus', "$('#history-filter-drawer').open = false"]) {
   if (!app.includes(filterDrawerLogic)) throw new Error(`Missing collapsible filter behavior: ${filterDrawerLogic}`);
 }
-if (!fs.readFileSync('frontend/styles-v2.css', 'utf8').includes('.filter-drawer[open]')) throw new Error('Missing collapsible filter styles');
+if (!styles.includes('.filter-drawer[open]')) throw new Error('Missing collapsible filter styles');
 for (const saveFeedbackUi of ['save-feedback','save-feedback-title','save-feedback-message','save-feedback-close']) {
   if (!html.includes(`id="${saveFeedbackUi}"`)) throw new Error(`Missing save feedback UI: ${saveFeedbackUi}`);
 }
@@ -75,7 +78,6 @@ for (const loadingUi of ['loading-animation','assets/lottie-light.min.js']) {
 for (const loadingLogic of ['initLoadingAnimation','assets/loading.json','goToAndPlay','prefers-reduced-motion']) {
   if (!app.includes(loadingLogic)) throw new Error(`Missing Lottie loading behavior: ${loadingLogic}`);
 }
-const styles = fs.readFileSync('frontend/styles-v2.css', 'utf8');
 for (const readabilityStyle of ['.save-feedback.working','.history-card .amount strong','.detail-summary-grid strong','.summary-card strong']) {
   if (!styles.includes(readabilityStyle)) throw new Error(`Missing readability/save style: ${readabilityStyle}`);
 }
@@ -111,5 +113,6 @@ console.log(JSON.stringify({
   backendLines: backend.split('\n').length,
   frontendElementsChecked: new Set(ids).size,
   requiredFunctions: requiredFunctions.length,
-  pwaIcons: manifestWeb.icons.length
+  pwaIcons: manifestWeb.icons.length,
+  styleFiles
 }, null, 2));
