@@ -3,7 +3,10 @@ name: Deploy Palm Yield Ledger PWA
 on:
   push:
     branches: [main]
-    paths: ['frontend/**', '.github/workflows/deploy-pages.yml']
+    paths: ['frontend/**', 'apps-script/**', 'tests/**', 'package.json', 'docs/**', '.github/workflows/deploy-pages.yml']
+  pull_request:
+    branches: [main]
+    paths: ['frontend/**', 'apps-script/**', 'tests/**', 'package.json', 'docs/**', '.github/workflows/deploy-pages.yml']
   workflow_dispatch:
 
 permissions:
@@ -12,7 +15,7 @@ permissions:
   id-token: write
 
 concurrency:
-  group: pages
+  group: pages-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -26,6 +29,7 @@ jobs:
       - run: npm run check
 
   deploy:
+    if: github.event_name != 'pull_request'
     needs: validate
     environment:
       name: github-pages
