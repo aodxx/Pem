@@ -4,8 +4,8 @@ const required = [
   'README.md', 'CONTRIBUTING.md', 'package.json',
   'index.html', '.nojekyll',
   'frontend/index.html', 'frontend/app.js', 'frontend/styles-v2.css', 'frontend/sw.js',
-  'apps-script/Code.gs', 'apps-script/appsscript.json',
-  'docs/API.md', 'docs/INSTALL.md', 'docs/PROGRESS.md', 'docs/NEXT_FEATURES.md'
+  'apps-script/Code.gs', 'apps-script/OwnerTemplate.gs', 'apps-script/appsscript.json',
+  'docs/API.md', 'docs/INSTALL.md', 'docs/PROGRESS.md', 'docs/NEXT_FEATURES.md', 'docs/MULTI_OWNER_SETUP.md'
 ];
 for (const path of required) {
   if (!fs.existsSync(path)) throw new Error(`Missing canonical project file: ${path}`);
@@ -24,14 +24,15 @@ for (const path of forbiddenRootCopies) {
   if (fs.existsSync(path)) throw new Error(`Duplicate or obsolete file must not exist: ${path}`);
 }
 
-const backendSources = fs.readdirSync('apps-script').filter(name => name.endsWith('.gs'));
-if (backendSources.length !== 1 || backendSources[0] !== 'Code.gs') {
-  throw new Error(`Apps Script must have one canonical source file; found: ${backendSources.join(', ')}`);
+const backendSources = fs.readdirSync('apps-script').filter(name => name.endsWith('.gs')).sort();
+const allowedBackendSources = ['Code.gs', 'OwnerTemplate.gs'];
+if (backendSources.length !== allowedBackendSources.length || backendSources.some((name, index) => name !== allowedBackendSources[index])) {
+  throw new Error(`Apps Script canonical sources must be ${allowedBackendSources.join(', ')}; found: ${backendSources.join(', ')}`);
 }
 
 const secretScanFiles = [
-  'frontend/config.js', 'frontend/app.js', 'apps-script/Code.gs',
-  'README.md', 'CONTRIBUTING.md'
+  'frontend/config.js', 'frontend/app.js', 'apps-script/Code.gs', 'apps-script/OwnerTemplate.gs',
+  'README.md', 'CONTRIBUTING.md', 'docs/MULTI_OWNER_SETUP.md'
 ];
 const source = secretScanFiles.map(path => fs.readFileSync(path, 'utf8')).join('\n');
 if (/AIza[0-9A-Za-z_-]{20,}/.test(source)) throw new Error('Possible Gemini API key committed');
