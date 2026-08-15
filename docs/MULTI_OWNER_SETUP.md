@@ -29,11 +29,17 @@ PALM LEDGER PWA (ใช้ URL หน้าเว็บเดียวกัน�
 
 Frontend จับคู่กับ Owner Instance ผ่าน `Apps Script Web App URL + Access Token` ที่เก็บในอุปกรณ์ของผู้ใช้
 
+## Template Sheet ต้องเป็นชีตสะอาด
+
+Template Sheet ต้องมีเฉพาะโครงสร้าง/หัวตารางและ Settings ที่ไม่ใช่ข้อมูลส่วนตัว **ห้ามทำสำเนา Google Sheet production ที่มีรายการขายจริงแล้วส่งให้คนอื่น**
+
+ตัวติดตั้ง `setupOwnerInstance()` มี guard เพิ่มเติมและจะปฏิเสธการติดตั้งเมื่อพบข้อมูลเดิมในชีตธุรกรรม เช่น Sales, Deductions, Buyers, Contractors, LaborEntries, LaborPayments, OCRRuns, AuditTrail หรือ Logs และจะปฏิเสธ Spreadsheet production เดิมของระบบด้วย
+
 ## ติดตั้งให้เจ้าของใหม่
 
-### วิธีแนะนำ: สำเนา Google Sheet ที่มี Apps Script ผูกอยู่
+### วิธีแนะนำ: สำเนา Google Sheet Template ที่สะอาดและมี Apps Script ผูกอยู่
 
-1. ทำสำเนา Google Sheet Template
+1. ทำสำเนา **PALM LEDGER Template Sheet ที่ไม่มีข้อมูลของเจ้าของคนอื่น**
 2. เปิดสำเนานั้นด้วยบัญชี Google ของเจ้าของใหม่
 3. ไปที่ **ส่วนขยาย > Apps Script**
 4. ต้องมี `Code.gs`, `OwnerTemplate.gs` และ `appsscript.json`
@@ -55,6 +61,8 @@ Frontend จับคู่กับ Owner Instance ผ่าน `Apps Script We
 14. Who has access: ตามรูปแบบ deployment ที่ระบบใช้อยู่
 15. คัดลอก Web App URL
 
+> Multi-owner installer **ไม่เรียก `setupProject()` ของระบบ production เดิม** เพราะฟังก์ชัน legacy นั้นมีหน้าที่ตั้งค่าระบบ production เดิมและอาจเขียน Spreadsheet/Drive ID เดิมกลับเข้า Script Properties ตัวติดตั้งใหม่จะสร้าง schema บน Sheet ของเจ้าของใหม่โดยตรงแทน
+
 ## จับคู่กับ PALM LEDGER PWA
 
 เปิดหน้า **ตั้งค่า** ใน PALM LEDGER แล้วกรอก:
@@ -64,7 +72,13 @@ Frontend จับคู่กับ Owner Instance ผ่าน `Apps Script We
 
 กด **บันทึกและทดสอบการเชื่อมต่อ**
 
-หน้าเว็บสามารถใช้ URL เดียวกันสำหรับหลายคนได้ เพราะ Web App URL และ Token ถูกเก็บไว้ใน browser/PWA ของแต่ละอุปกรณ์ ไม่ได้ commit ลง Repository
+หน้าเว็บสามารถใช้ URL GitHub Pages เดียวกันสำหรับหลายคนได้ เพราะ Web App URL และ Token ถูกเก็บไว้ใน browser/PWA ของแต่ละอุปกรณ์ ไม่ได้ commit ลง Repository
+
+### กฎสำหรับอุปกรณ์
+
+ในรุ่นปัจจุบันให้ถือว่า **1 PWA installation / 1 browser profile = 1 Owner** เนื่องจาก Offline Save Queue ถูกเก็บใน IndexedDB ของอุปกรณ์ หากต้องเปลี่ยนจากเจ้าของ A ไปเจ้าของ B บนอุปกรณ์เดียวกัน ต้องแน่ใจก่อนว่าไม่มีรายการรอส่ง และควรล้างข้อมูลแอป/ติดตั้ง PWA ใหม่ก่อนจับคู่เจ้าของใหม่ เพื่อไม่ให้คิวออฟไลน์เก่าปะปนกับ instance ใหม่
+
+สำหรับการใช้งานปกติที่แต่ละเจ้าของใช้โทรศัพท์ของตัวเอง จะไม่มีปัญหานี้
 
 ## ทำไมต้องแยก Apps Script ต่อคน
 
@@ -105,6 +119,8 @@ getOwnerInstanceStatus()
 - ฟีเจอร์ใหม่ต้องทำงานโดยไม่สมมติว่ามีเจ้าของเพียงคนเดียว
 - migration ต้องทำงานใน Sheet ของ Owner Instance ปัจจุบันเท่านั้น
 - test fixture ห้ามอ้างอิง Spreadsheet จริงของ production
+- ห้ามเรียก legacy `setupProject()` จาก Multi-owner installer
+- ห้ามสร้าง Template จากชีตที่มีข้อมูล production จริง
 
 ## สถานะของเจ้าของเดิม
 
