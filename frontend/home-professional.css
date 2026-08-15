@@ -1,0 +1,86 @@
+/* Home screen refinement: make the capture view feel like a working tool, not a marketing page. */
+#view-home { padding-top: 2px; }
+#view-home .hero {
+  min-height: 0;
+  margin: 4px 0 14px;
+  padding: 22px 22px 21px;
+  border-radius: 24px;
+  background: linear-gradient(145deg, #174535 0%, #0b241b 70%, #071b15 100%);
+  box-shadow: 0 16px 38px rgba(8, 37, 26, .14);
+}
+#view-home .hero::before,
+#view-home .hero::after,
+#view-home .hero-orbit,
+#view-home .flow-steps { display: none; }
+#view-home .hero .eyebrow.light { margin: 0 0 8px; font-size: 0; letter-spacing: 0; text-transform: none; }
+#view-home .hero .eyebrow.light::after { content: "รายการใหม่"; color: var(--leaf); font-size: .75rem; font-weight: 900; letter-spacing: .02em; }
+#view-home .hero h1 { max-width: none; font-size: 0; line-height: 1.2; letter-spacing: 0; }
+#view-home .hero h1::after { content: "บันทึกการขายปาล์ม"; display: block; color: #fff; font-size: clamp(1.55rem, 6vw, 2.15rem); font-weight: 900; line-height: 1.18; letter-spacing: -.025em; }
+#view-home .hero p { max-width: 560px; margin: 8px 0 0; font-size: 0; line-height: 1.5; }
+#view-home .hero p::after { content: "ถ่ายรูปใบชั่งให้ชัด หรือเลือกกรอกข้อมูลเองด้านล่าง"; color: rgba(255,255,255,.72); font-size: .88rem; line-height: 1.55; }
+
+#view-home .capture-zone { gap: 10px; }
+#view-home .camera-action {
+  min-height: 104px;
+  gap: 14px;
+  padding: 17px 18px;
+  border-radius: 21px;
+  background: linear-gradient(135deg, #b9f34b 0%, #a7e83a 100%);
+  box-shadow: 0 14px 28px rgba(120, 175, 32, .17);
+}
+#view-home .action-icon { width: 54px; height: 54px; border-radius: 17px; font-size: 1.7rem; }
+#view-home .action-copy small { font-size: 0; letter-spacing: 0; text-transform: none; }
+#view-home .action-copy small::after { content: "แนะนำ"; font-size: .7rem; font-weight: 900; color: rgba(7,27,21,.62); }
+#view-home .action-copy strong { margin: 4px 0 2px; font-size: 1.08rem; }
+#view-home .action-copy strong { font-size: 0; }
+#view-home .action-copy strong::after { content: "ถ่ายรูปใบชั่ง"; font-size: 1.08rem; font-weight: 900; }
+#view-home .action-copy em { font-size: 0; }
+#view-home .action-copy em::after { content: "เปิดกล้องและอ่านข้อมูลด้วย Gemini"; font-size: .74rem; color: rgba(7,27,21,.64); }
+#view-home .action-arrow { width: 34px; height: 34px; background: rgba(7,27,21,.1); font-size: 1.05rem; }
+
+#view-home .alternate-actions { gap: 10px; }
+#view-home .action-card.compact {
+  min-height: 92px;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 14px;
+  border-radius: 18px;
+  border-color: rgba(16,47,36,.09);
+  box-shadow: 0 8px 20px rgba(14,45,33,.055);
+}
+#view-home .action-card.compact:hover,
+#view-home .action-card.compact:focus-visible { border-color: rgba(33,96,71,.28); box-shadow: 0 10px 24px rgba(14,45,33,.09); outline: none; }
+#view-home .mini-icon { width: 40px; height: 40px; border-radius: 12px; }
+#view-home .action-card.compact strong { font-size: .86rem; line-height: 1.3; }
+#view-home .action-card.compact small { margin-top: 4px; font-size: .68rem; line-height: 1.35; }
+#view-home .trust-strip { display: none; }
+
+#view-home > .notice:first-of-type { margin-top: 0; }
+#view-home .panel { margin-top: 14px; }
+
+@media (max-width: 560px) {
+  main { padding-top: 12px; }
+  #view-home .hero { min-height: 0; padding: 19px 18px 18px; border-radius: 21px; }
+  #view-home .hero h1::after { font-size: 1.65rem; }
+  #view-home .hero p::after { font-size: .82rem; }
+  #view-home .camera-action { min-height: 96px; padding: 15px; }
+  #view-home .action-icon { width: 50px; height: 50px; }
+  #view-home .action-copy strong::after { font-size: 1rem; }
+  #view-home .action-copy em::after { font-size: .7rem; }
+  #view-home .action-card.compact { min-height: 88px; padding: 13px; }
+  #view-home .action-card.compact strong { font-size: .8rem; }
+  #view-home .action-card.compact small { font-size: .65rem; }
+}
+
+@media (max-width: 390px) {
+  #view-home .hero { padding: 18px 16px 17px; }
+  #view-home .hero h1::after { font-size: 1.52rem; }
+  #view-home .camera-action { grid-template-columns: auto 1fr; }
+  #view-home .action-arrow { display: none; }
+  #view-home .alternate-actions { grid-template-columns: 1fr 1fr; }
+  #view-home .action-card.compact { min-height: 96px; flex-direction: column; align-items: flex-start; }
+}
+
+@media (prefers-color-scheme: dark) {
+  #view-home .action-card.compact { background: var(--paper); }
+}
