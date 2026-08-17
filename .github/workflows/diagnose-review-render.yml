@@ -1,0 +1,88 @@
+name: One-shot review render diagnostics
+on:
+  push:
+    branches: [agent/diagnose-review-render]
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/diagnose-review-render
+      - name: Apply exact diagnostic patch
+        shell: python
+        run: |
+          from pathlib import Path
+          p = Path('frontend/app.js')
+          s = p.read_text()
+          old = '''function openReview(receipt, lowFields, validation, editing, laborEntries = []) {
+  state.receipt = receipt;
+  $('#review-title').textContent = editing ? 'แก้ไขรายการขาย' : (state.source === 'MANUAL' ? 'เพิ่มข้อมูลด้วยตนเอง' : 'ข้อมูลจากใบชั่ง');
+  const confidence = Math.round(Number(receipt.overallConfidence || 0) * 100);
+  $('#confidence-badge').textContent = state.source === 'MANUAL' ? 'กรอกเอง' : `มั่นใจ ${confidence}%`;
+  $('#confidence-badge').classList.toggle('low', confidence < 75 && state.source !== 'MANUAL');
+  $$('#sale-form [name]').forEach(input => { if (input.name !== 'deductionType' && input.name !== 'deductionAmount') input.value = valueForInput(receipt[input.name]); });
+  $('#deductions-list').innerHTML = '';
+  (receipt.deductions || []).forEach(addDeductionRow);
+  prepareLaborUI(laborEntries);
+  loadContractors().catch(() => {});
+  $$('#sale-form label').forEach(label => label.classList.remove('low-confidence'));
+  lowFields.forEach(field => { const input = $(`#sale-form [name="${cssEscape(field)}"]`); if (input) input.closest('label').classList.add('low-confidence'); });
+  showValidation(validation || { warnings: [] });
+  $('#preview-panel').classList.add('hidden'); $('#review-panel').classList.remove('hidden');
+  $('#review-panel').scrollIntoView({ behavior: 'smooth', block: 'start' }); saveDraft();
+}
+'''
+          new = '''function openReview(receipt, lowFields, validation, editing, laborEntries = []) {
+  let stage = 'start';
+  try {
+    stage = 'state'; state.receipt = receipt;
+    stage = 'heading';
+    $('#review-title').textContent = editing ? 'แก้ไขรายการขาย' : (state.source === 'MANUAL' ? 'เพิ่มข้อมูลด้วยตนเอง' : 'ข้อมูลจากใบชั่ง');
+    const confidence = Math.round(Number(receipt.overallConfidence || 0) * 100);
+    $('#confidence-badge').textContent = state.source === 'MANUAL' ? 'กรอกเอง' : `มั่นใจ ${confidence}%`;
+    $('#confidence-badge').classList.toggle('low', confidence < 75 && state.source !== 'MANUAL');
+    stage = 'fill-form';
+    $$('#sale-form [name]').forEach(input => { if (input.name !== 'deductionType' && input.name !== 'deductionAmount') input.value = valueForInput(receipt[input.name]); });
+    stage = 'deductions';
+    $('#deductions-list').innerHTML = '';
+    (receipt.deductions || []).forEach(addDeductionRow);
+    stage = 'labor-ui'; prepareLaborUI(laborEntries);
+    stage = 'contractors'; loadContractors().catch(() => {});
+    stage = 'confidence';
+    $$('#sale-form label').forEach(label => label.classList.remove('low-confidence'));
+    lowFields.forEach(field => { const input = $(`#sale-form [name="${cssEscape(field)}"]`); if (input) input.closest('label').classList.add('low-confidence'); });
+    stage = 'validation'; showValidation(validation || { warnings: [] });
+    stage = 'reveal';
+    $('#preview-panel').classList.add('hidden'); $('#review-panel').classList.remove('hidden');
+    $('#review-panel').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    stage = 'draft'; saveDraft();
+  } catch (error) {
+    throw appError('REVIEW_RENDER_FAILED', `เปิดหน้าตรวจสอบไม่สำเร็จ (${stage}): ${error && error.message ? error.message : 'unknown error'}`, { stage, originalMessage: error && error.message });
+  }
+}
+'''
+          if s.count(old) != 1:
+            raise SystemExit(f'openReview exact block count={s.count(old)}')
+          p.write_text(s.replace(old, new))
+
+          for file, oldv, newv in [('frontend/config.js', "version: '2.6.0'", "version: '2.6.1'"), ('frontend/sw.js', "palm-ledger-v2.6.0", "palm-ledger-v2.6.1")]:
+            q=Path(file); t=q.read_text()
+            if t.count(oldv)!=1: raise SystemExit(f'{file} version count={t.count(oldv)}')
+            q.write_text(t.replace(oldv,newv))
+      - name: Validate repository
+        run: npm run check
+      - name: Verify scope
+        run: |
+          git diff --check
+          git diff -- frontend/app.js frontend/config.js frontend/sw.js
+      - name: Commit diagnostics and remove workflow
+        run: |
+          rm .github/workflows/diagnose-review-render.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add frontend/app.js frontend/config.js frontend/sw.js .github/workflows/diagnose-review-render.yml
+          git commit -m "Add review render diagnostics"
+          git push origin HEAD:agent/diagnose-review-render
