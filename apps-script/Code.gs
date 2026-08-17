@@ -420,10 +420,6 @@ function replaceDeductions_(saleId, deductions) {
   rows.forEach(function (row) { sheet.deleteRow(row.__rowNumber); });
   const timestamp = nowIso_();
   const records = (deductions || []).map(function (deduction, index) {
-    const lowConfidenceFields = getLowConfidenceFields_(normalized, Number(settings.LOW_CONFIDENCE_THRESHOLD || 0.75));
-    if (validation.warnings.some(function (item) { return item.code === 'DATE_OUTLIER'; }) && lowConfidenceFields.indexOf('saleDate') < 0) {
-      lowConfidenceFields.push('saleDate');
-    }
     return {
       DeductionID: createId_('DED'), SaleID: saleId, SortOrder: index + 1,
       DeductionType: deduction.type || 'OTHER', Description: deduction.description || '',
@@ -624,6 +620,10 @@ function analyzeReceipt_(payload, requestId) {
     const extracted = callGeminiReceipt_(image, model, schemaVersion);
     const normalized = normalizeReceipt_(extracted);
     const validation = validateSaleDraft_(normalized, false);
+    const lowConfidenceFields = getLowConfidenceFields_(normalized, Number(settings.LOW_CONFIDENCE_THRESHOLD || 0.75));
+    if (validation.warnings.some(function (item) { return item.code === 'DATE_OUTLIER'; }) && lowConfidenceFields.indexOf('saleDate') < 0) {
+      lowConfidenceFields.push('saleDate');
+    }
     appendObjectRow_('OCRRuns', {
       OCRRunID: ocrRunId,
       RequestID: requestId,
