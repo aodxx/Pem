@@ -1,0 +1,70 @@
+name: One-shot OCR scope hotfix
+
+on:
+  push:
+    branches:
+      - agent/fix-ocr-low-confidence-scope
+    paths:
+      - .github/workflows/hotfix-ocr-scope.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/fix-ocr-low-confidence-scope
+          fetch-depth: 0
+
+      - name: Apply exact verified patch
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('apps-script/Code.gs')
+          text = path.read_text()
+
+          wrong = """  const records = (deductions || []).map(function (deduction, index) {\n    const lowConfidenceFields = getLowConfidenceFields_(normalized, Number(settings.LOW_CONFIDENCE_THRESHOLD || 0.75));\n    if (validation.warnings.some(function (item) { return item.code === 'DATE_OUTLIER'; }) && lowConfidenceFields.indexOf('saleDate') < 0) {\n      lowConfidenceFields.push('saleDate');\n    }\n    return {"""
+          fixed = """  const records = (deductions || []).map(function (deduction, index) {\n    return {"""
+
+          anchor = """    const normalized = normalizeReceipt_(extracted);\n    const validation = validateSaleDraft_(normalized, false);\n    appendObjectRow_('OCRRuns', {"""
+          replacement = """    const normalized = normalizeReceipt_(extracted);\n    const validation = validateSaleDraft_(normalized, false);\n    const lowConfidenceFields = getLowConfidenceFields_(normalized, Number(settings.LOW_CONFIDENCE_THRESHOLD || 0.75));\n    if (validation.warnings.some(function (item) { return item.code === 'DATE_OUTLIER'; }) && lowConfidenceFields.indexOf('saleDate') < 0) {\n      lowConfidenceFields.push('saleDate');\n    }\n    appendObjectRow_('OCRRuns', {"""
+
+          if text.count(wrong) != 1:
+              raise SystemExit(f'Expected exactly one misplaced lowConfidenceFields block, found {text.count(wrong)}')
+          if text.count(anchor) != 1:
+              raise SystemExit(f'Expected exactly one analyzeReceipt anchor, found {text.count(anchor)}')
+
+          patched = text.replace(wrong, fixed, 1).replace(anchor, replacement, 1)
+
+          if patched.count("const lowConfidenceFields = getLowConfidenceFields_(normalized") != 1:
+              raise SystemExit('Post-patch invariant failed: lowConfidenceFields declaration count is not 1')
+          if "function analyzeReceipt_(payload, requestId)" not in patched:
+              raise SystemExit('Post-patch invariant failed: analyzeReceipt_ missing')
+          if "function replaceDeductions_(saleId, deductions)" not in patched:
+              raise SystemExit('Post-patch invariant failed: replaceDeductions_ missing')
+
+          path.write_text(patched)
+          PY
+
+      - name: Validate repository
+        run: npm run check
+
+      - name: Verify diff scope
+        run: |
+          git diff --check
+          git diff -- apps-script/Code.gs
+          test "$(git diff --name-only | sort)" = "apps-script/Code.gs"
+
+      - name: Commit patch and remove one-shot workflow
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps-script/Code.gs
+          git rm .github/workflows/hotfix-ocr-scope.yml
+          git commit -m "Fix OCR low-confidence scope bug"
+          git push origin HEAD:agent/fix-ocr-low-confidence-scope
