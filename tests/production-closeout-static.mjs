@@ -3,7 +3,7 @@ import fs from 'node:fs';
 const index = fs.readFileSync('frontend/index.html', 'utf8');
 const config = fs.readFileSync('frontend/config.js', 'utf8');
 const sw = fs.readFileSync('frontend/sw.js', 'utf8');
-const backend = fs.readFileSync('apps-script/Code.gs', 'utf8');
+const backup = fs.readFileSync('apps-script/Backup.gs', 'utf8');
 const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
 
 function assert(condition, message) {
@@ -17,7 +17,9 @@ assert(index.includes('name="timeIn" type="time" step="1"'), 'timeIn must accept
 assert(index.includes('name="timeOut" type="time" step="1"'), 'timeOut must accept seconds');
 
 for (const fn of ['createDataBackup', 'installDailyBackupTrigger', 'getBackupStatus', 'createRestoreCopyFromBackup']) {
-  assert(backend.includes(`function ${fn}(`), `Missing backend backup function: ${fn}`);
+  assert(backup.includes(`function ${fn}(`), `Missing backend backup function: ${fn}`);
 }
+assert(backup.includes("retentionCount: 30"), 'backup retention must be explicit');
+assert(!backup.includes('setContent('), 'restore helper must not overwrite production content');
 
 console.log('production closeout static checks passed');
