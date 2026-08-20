@@ -1,53 +1,48 @@
-# PALM LEDGER — ติดตั้งระบบทีมและค่าแรง v1.3.0
+# PALM LEDGER — ติดตั้ง Production
 
-## ลำดับการติดตั้ง
+## Backend 1.3.0
 
 1. เปิด Apps Script Project เดิม
-2. สำรองโค้ด `Code.gs` เดิม
-3. แทนที่ด้วย `apps-script/Code.gs` รุ่น `1.3.0`
-4. กดบันทึก
-5. เลือกฟังก์ชัน `upgradeLaborSystem`
-6. กด Run และอนุญาตสิทธิ์ หาก Google แสดงหน้าขอสิทธิ์
-7. ตรวจผลลัพธ์ว่ามี `ok: true` และ `schemaValid: true`
-8. ตรวจ Google Sheet ว่ามีแท็บใหม่:
-   - `Contractors`
-   - `LaborEntries`
-   - `LaborPayments`
-   - `SchemaMigrations`
+2. สำรองโค้ดเดิม
+3. อัปเดต `apps-script/Code.gs`
+4. เพิ่ม/อัปเดต `apps-script/OwnerTemplate.gs` สำหรับ Multi-owner
+5. เพิ่ม `apps-script/Backup.gs` สำหรับระบบสำรองข้อมูล
+6. ตรวจ `appsscript.json`
+7. กดบันทึก
+8. รัน `runPhase1Tests()` และตรวจว่า `failed = 0`
 9. Deploy เวอร์ชันใหม่โดยแก้ Deployment เดิม เพื่อรักษา Web App URL
-10. เปิด URL `?action=health` และตรวจว่า `status` เป็น `ready`
-11. รัน `runPhase1Tests()` และตรวจว่า `failed` เป็น `0`
-12. เผยแพร่หน้าแอป Frontend/PWA รุ่น `2.5.1`
+10. เปิด URL `?action=health` และตรวจว่า backend ตอบ `ok: true`
 
-## สิ่งที่ระบบทำให้อัตโนมัติ
+## Production Backup
 
-- สร้างสำเนา Google Sheet ก่อนเปลี่ยนโครงสร้าง
-- เก็บรหัสไฟล์สำรองใน Script Properties
-- สร้างเฉพาะแท็บและหัวคอลัมน์ที่ขาด
-- ไม่ลบข้อมูลหรือแท็บเดิม
-- รันซ้ำได้โดยไม่สร้างแท็บซ้ำ
-- บันทึกประวัติการอัปเกรดใน `SchemaMigrations`
+หลังเพิ่ม `Backup.gs`:
 
-## ผลลัพธ์ที่คาดหวังจาก `upgradeLaborSystem()`
+1. รัน `createDataBackup()` หนึ่งครั้ง
+2. ตรวจ Drive workspace ว่ามีโฟลเดอร์ `Backups`
+3. รัน `installDailyBackupTrigger()`
+4. รัน `getBackupStatus()` และตรวจ `triggerInstalled: true`
+5. อ่านขั้นตอนกู้คืนที่ `docs/BACKUP_RESTORE.md`
 
-```json
-{
-  "ok": true,
-  "version": "1.3.0",
-  "schemaValid": true,
-  "alreadyApplied": false
-}
-```
+ระบบเก็บ backup ล่าสุด 30 ชุด และการกู้คืนจะสร้างสำเนาใหม่สำหรับตรวจสอบก่อนเสมอ ไม่เขียนทับ production อัตโนมัติ
 
-ถ้ารันซ้ำ `alreadyApplied` จะเป็น `true` และข้อมูลเดิมต้องยังอยู่ครบ
+## Frontend/PWA 2.6.1
 
-## การทดสอบหลังติดตั้ง
+Frontend เผยแพร่ผ่าน GitHub Pages อัตโนมัติเมื่อ merge เข้า `main` และผ่าน `npm run check`
 
-1. เพิ่มทีมแทงหนึ่งทีม พร้อมอัตรา 1.50 บาท/กก.
-2. สร้างรอบขายน้ำหนักสุทธิ 775 กก.
-3. ตรวจว่าค่าแรงเป็น 1,162.50 บาท
-4. เพิ่มบุคคล 3 คน อัตรา 300 บาท/คน
-5. ตรวจว่าค่าแรงบุคคลเป็น 900 บาท
-6. ตรวจค่าแรงรวม 2,062.50 บาท
-7. บันทึกการจ่ายบางส่วนและตรวจสถานะ `PARTIAL`
-8. เปิดหน้ารายการและตรวจว่ารายการล่าสุดอยู่บนสุด พร้อมภาพใบชั่งและยอดหลังค่าแรง
+จุดสำคัญของ 2.6.1:
+- ช่อง `timeIn` และ `timeOut` รองรับ `HH:MM:SS` ด้วย `step="1"`
+- Service Worker cache: `palm-ledger-v2.6.1`
+- Production Smoke ตรวจไฟล์ที่ deploy จริงและ backend health หลัง deploy
+
+## Acceptance หลัง deploy
+
+1. เปิดแอปบนมือถือและยืนยันเวอร์ชัน `2.6.1`
+2. ถ่าย/เลือกรูปใบชั่งจริง
+3. ตรวจว่า Gemini เติมวันที่ เวลา น้ำหนัก ราคา และยอดเงินถูกต้อง
+4. ตรวจว่าเวลาเข้า/ออกที่มีวินาทีสามารถบันทึกได้โดยไม่ถูก browser ปฏิเสธ
+5. บันทึกรายการ
+6. ตรวจ Google Sheet ว่าค่า `TimeIn` / `TimeOut` ตรงกับใบชั่ง
+7. ตรวจภาพใบชั่งเปิดจากรายการย้อนหลังได้
+8. ตรวจ Dashboard/History และค่าแรงถ้ามี
+
+เมื่อขั้นตอนนี้ผ่านอย่างน้อยหนึ่งรายการหลังเวอร์ชัน 2.6.1 จึงถือว่า end-to-end production acceptance ผ่าน

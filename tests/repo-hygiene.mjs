@@ -4,7 +4,7 @@ const required = [
   'README.md', 'CONTRIBUTING.md', 'package.json',
   'index.html', '.nojekyll',
   'frontend/index.html', 'frontend/app.js', 'frontend/styles-v2.css', 'frontend/sw.js',
-  'apps-script/Code.gs', 'apps-script/OwnerTemplate.gs', 'apps-script/appsscript.json',
+  'apps-script/Code.gs', 'apps-script/OwnerTemplate.gs', 'apps-script/Backup.gs', 'apps-script/appsscript.json',
   'docs/API.md', 'docs/INSTALL.md', 'docs/PROGRESS.md', 'docs/NEXT_FEATURES.md', 'docs/MULTI_OWNER_SETUP.md'
 ];
 for (const path of required) {
@@ -25,13 +25,13 @@ for (const path of forbiddenRootCopies) {
 }
 
 const backendSources = fs.readdirSync('apps-script').filter(name => name.endsWith('.gs')).sort();
-const allowedBackendSources = ['Code.gs', 'OwnerTemplate.gs'];
+const allowedBackendSources = ['Backup.gs', 'Code.gs', 'OwnerTemplate.gs'];
 if (backendSources.length !== allowedBackendSources.length || backendSources.some((name, index) => name !== allowedBackendSources[index])) {
   throw new Error(`Apps Script canonical sources must be ${allowedBackendSources.join(', ')}; found: ${backendSources.join(', ')}`);
 }
 
 const secretScanFiles = [
-  'frontend/config.js', 'frontend/app.js', 'apps-script/Code.gs', 'apps-script/OwnerTemplate.gs',
+  'frontend/config.js', 'frontend/app.js', 'apps-script/Code.gs', 'apps-script/OwnerTemplate.gs', 'apps-script/Backup.gs',
   'README.md', 'CONTRIBUTING.md', 'docs/MULTI_OWNER_SETUP.md'
 ];
 const source = secretScanFiles.map(path => fs.readFileSync(path, 'utf8')).join('\n');
