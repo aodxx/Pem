@@ -1,6 +1,6 @@
 {
   "name": "palm-yield-ledger",
-  "version": "2.6.0",
+  "version": "2.6.1",
   "private": true,
   "description": "PALM LEDGER mobile PWA and Google Apps Script backend",
   "type": "module",
@@ -10,7 +10,7 @@
   "scripts": {
     "dev": "node scripts/dev-server.mjs",
     "check:syntax": "node --check frontend/app.js && node --check frontend/sw.js && node --check frontend/config.js",
-    "test": "node tests/repo-hygiene.mjs && node tests/static-check.mjs && node tests/multi-owner-static.mjs && node tests/v1-static-check.mjs && node tests/v1-backend-unit.mjs && node tests/labor-v1.3-unit.mjs",
+    "test": "node tests/repo-hygiene.mjs && node tests/static-check.mjs && node tests/multi-owner-static.mjs && node tests/v1-static-check.mjs && node tests/v1-backend-unit.mjs && node tests/labor-v1.3-unit.mjs && node tests/production-closeout-static.mjs",
     "check": "npm run check:syntax && npm test"
   }
 }
