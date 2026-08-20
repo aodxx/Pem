@@ -1,0 +1,120 @@
+/* PALM LEDGER 2.6.3 — contrast correction based on real Android device video. */
+:root {
+  --contrast-ink: #102f24;
+  --contrast-text: #29463b;
+  --contrast-muted: #617268;
+  --contrast-active-bg: #e9f8c7;
+  --contrast-active: #123d2b;
+}
+
+/* Explicit foregrounds on light/glass surfaces. */
+.topbar,
+.bottom-nav,
+.bottom-navigation,
+nav.bottom-bar,
+.panel,
+#view-home .capture-zone,
+#view-home .alternate-actions { color: var(--contrast-ink); }
+
+.brand-copy strong,
+.section-title h1,
+.panel-heading h2,
+.history-card strong,
+.detail-card strong,
+.settings-card strong,
+.contractor-card strong { color: var(--contrast-ink); }
+
+.brand-copy span,
+.section-title .eyebrow,
+.panel-heading p,
+.history-card small,
+.detail-card small,
+.settings-card small,
+.contractor-card small { color: var(--contrast-muted); }
+
+.sync-pill {
+  color: #315547;
+  background: #ffffff;
+  border-color: #d7e1db;
+}
+.sync-pill i { background: #79b928; }
+
+/* Main issue seen in the device video: inactive bottom-nav items were almost white on white. */
+.nav-item,
+.nav-item:visited {
+  color: #496158 !important;
+  background: transparent;
+  opacity: 1 !important;
+}
+.nav-item svg,
+.nav-item .ui-icon {
+  color: currentColor !important;
+  stroke: currentColor !important;
+  fill: none;
+  opacity: 1 !important;
+}
+.nav-item span,
+.nav-item small {
+  color: currentColor !important;
+  opacity: 1 !important;
+}
+.nav-item.active {
+  color: var(--contrast-active) !important;
+  background: var(--contrast-active-bg) !important;
+  box-shadow: inset 0 0 0 1px #d8ecad;
+}
+
+/* Pale action cards and controls should never inherit low-contrast colors. */
+#view-home .action-card.compact,
+#view-home .action-card.compact strong { color: #17382c !important; }
+#view-home .action-card.compact small { color: #64756c !important; }
+#view-home .mini-icon {
+  color: #1c513a !important;
+  background: #eef7e5 !important;
+}
+.button.secondary,
+.text-button,
+.labor-mode-button { color: #244b3a; }
+
+input,
+select,
+textarea {
+  color: #17382c;
+  -webkit-text-fill-color: #17382c;
+}
+input::placeholder,
+textarea::placeholder {
+  color: #7d8b83;
+  opacity: 1;
+}
+
+/* Keep cards separated from the warm app background without adding heavy shadows. */
+.summary-card,
+.history-card,
+.panel,
+.settings-card,
+.detail-card,
+.contractor-card {
+  border-color: rgba(31, 67, 51, .14);
+}
+
+@media (prefers-color-scheme: dark) {
+  .nav-item,
+  .nav-item:visited { color: #b9c9c0 !important; }
+  .nav-item.active {
+    color: #dff6aa !important;
+    background: rgba(185,243,75,.15) !important;
+    box-shadow: inset 0 0 0 1px rgba(185,243,75,.20);
+  }
+  .sync-pill {
+    color: #d9e8df;
+    background: rgba(24,41,33,.94);
+    border-color: rgba(223,240,229,.14);
+  }
+  input, select, textarea {
+    color: #eef7f1;
+    -webkit-text-fill-color: #eef7f1;
+  }
+  input::placeholder,
+  textarea::placeholder { color: #9cad9f; }
+}
