@@ -1,81 +1,85 @@
 # PROGRESS
 
-อัปเดตล่าสุด: 2026-08-14
+อัปเดตล่าสุด: 2026-08-20
 
 ## สถานะ
 
 - Phase 0 — Discovery & Architecture: **Completed**
 - Phase 1 — Google Sheets / Apps Script Foundation: **Completed and live verified**
 - Phase 2 — Backend API / Validation / Duplicate / Audit: **Completed**
-- Phase 3 — Gemini Vision Structured OCR: **Completed and live configured**
+- Phase 3 — Gemini Vision Structured OCR: **Completed and live verified**
 - Phase 4 — Mobile Frontend / Review / History / Edit: **Completed**
 - Phase 5 — Dashboard / Analytics: **Completed**
 - Phase 6 — PWA / Offline App Shell: **Completed**
 - Phase 7 — Static / Unit QA: **Passed**
 - Phase 8 — Contractor & Labor Management: **Completed and live verified**
+- Production Closeout: **In acceptance — one post-2.6.1 real save remains**
 
 ## Live verified foundation
 
-- Backend health status: `ready`
+- Backend health status: ready
 - Backend version: `1.3.0`
-- Spreadsheet / Schema / Settings / Drive / Gemini / Access Token: `true`
-- Gemini API key call: passed with model `gemini-3.6-flash`
+- Spreadsheet / Schema / Settings / Drive / Gemini / Access Token: configured
+- Gemini model: `gemini-3.6-flash`
 - Apps Script deployment URL recorded
-- Labor migration: passed with a full spreadsheet backup
-- Apps Script tests: `8 passed / 0 failed`
-- Setup timestamp: `2026-08-14T15:41:02+07:00`
+- Production OCR incident `SUCCESS → FAILED` fixed and verified at backend level
+- GitHub Pages deployment for frontend `2.6.1`: successful
+- Main CI for frontend `2.6.1`: successful
 
-## V1 implementation
+## Current production release
 
-- Single-file Apps Script release to prevent manual multi-file errors
-- Owner Access Token setup and hashing
-- Image validation and Drive storage
+- Frontend/PWA: `2.6.1`
+- Backend: `1.3.0`
+- API: `v1`
+- Gemini schema: `1.0.0`
+- Service Worker cache: `palm-ledger-v2.6.1`
+
+## Production capabilities
+
+- Mobile camera/upload/rotate/review/manual entry
 - Gemini Structured JSON receipt extraction
 - Confidence and missing-field handling
+- Receipt times with seconds (`HH:MM:SS`)
 - Server-side weight/amount validation
 - Duplicate scoring and override
 - Idempotent create requests
 - Sales create/list/get/update/void
 - Buyers auto-registration
+- Receipt image storage and in-app viewing
 - Dashboard summary/monthly/buyer comparison
 - Audit trail and application logs
-- Mobile capture/upload/rotate/review/manual entry
-- History, filters, edit, dashboard and installable PWA
-- Draft recovery and offline shell
-- Team/individual master data with auto-fill defaults
-- Multiple labor entries in one sale round
-- Per-kilogram, per-person and self-managed labor calculations
-- Rate snapshots that preserve historical accuracy
-- Unpaid/partial/paid labor status and payment history
-- Contractor search, edit, active status and latest-used ordering
-- Per-round rate override with optional default-rate update
-- Sale detail view with labor payment entry and payment history
-- History filters by contractor, work mode, payment status and date range
-- Settings moved behind the PL profile zone; bottom navigation reduced to three primary destinations
-- Web App URL and Access Token masked by default with timed reveal controls and automatic re-hiding
-- History search and filters collapsed by default, with an active-filter count in the compact bar
-- Important prices, weights, buyer names and report totals enlarged for mobile readability
-- Persistent save feedback now distinguishes saving, locally queued, successfully synced and failed states
-- Default CSS spinner replaced by the owner's Lottie loading animation, bundled locally for offline PWA use
-- Dashboard and history totals after labor cost
-- Safe `upgradeLaborSystem()` migration with a full spreadsheet backup
+- Draft recovery and offline save queue
+- Contractor/team/individual labor management
+- Per-kilogram, per-person and self-managed calculations
+- Labor payment tracking and history
+- Multi-owner template isolation
+- Access Token hashing and local-device pairing
+- Automated repository checks and GitHub Pages deployment
+- Production smoke workflow for deployed frontend + backend health
+- Operational Spreadsheet backup/recovery module (`Backup.gs`)
 
-## Automated verification
+## Production backup
 
-- Apps Script bundle syntax: passed
-- Frontend JS and Service Worker syntax: passed
-- Manifest and OAuth scopes: passed
-- Required Backend functions: 20/20
-- Frontend referenced element IDs: 101/101
-- Secret scan: passed
-- Backend normalization/validation/duplicate/dashboard tests: passed
-- Labor calculation/payment summary tests: passed
-- PWA icon sizes: 192×192 and 512×512
+`apps-script/Backup.gs` provides:
 
-## Closeout status
+- `createDataBackup()` — point-in-time Spreadsheet backup
+- `installDailyBackupTrigger()` — daily backup trigger
+- `getBackupStatus()` — non-secret health/status
+- `createRestoreCopyFromBackup()` — safe restore review copy without overwriting production
+- Retention: latest 30 backups
 
-- Development scope in `docs/NEXT_FEATURES.md`: **Complete**
-- Remaining activity after deployment: owner acceptance check on the next real sale (no code task remains)
+Backend backup helpers require one Apps Script update/deploy/setup before they become active in production. See `docs/BACKUP_RESTORE.md`.
+
+## Remaining production acceptance
+
+Only one user-device action remains before marking the project `Production Ready — Closed`:
+
+1. Open deployed PWA version `2.6.1` on the real mobile device.
+2. Scan a receipt containing seconds in TimeIn/TimeOut.
+3. Save the sale normally.
+4. Verify the new Sales row stores the same `HH:MM:SS` values shown on the receipt.
+
+This cannot be simulated from repository CI because it depends on the real camera/browser/PWA device path and production Access Token. After the user performs the save, the resulting row can be verified directly in Google Sheets.
 
 ## Resources
 
@@ -83,10 +87,3 @@
 - Apps Script Deployment: https://script.google.com/macros/s/AKfycbwttI8iFWVls788jXX-nV_7MZsFvwGkwDaIU3JdfcmEqH9zYYzQ5pxGeSza6NLJqmxQGA/exec
 - Spreadsheet: https://docs.google.com/spreadsheets/d/1S5WtdhsVUOQ5APZ_EiBKSZBTeyi6VKnVLeaGbWPBAPc/edit
 - GitHub Pages: https://aodxx.github.io/Pem/
-
-## Versions
-
-- Backend: `1.3.0`
-- Frontend/PWA: `2.5.1`
-- API: `v1`
-- Gemini schema: `1.0.0`
