@@ -19,9 +19,11 @@ jobs:
           set -euo pipefail
           curl --fail --silent --show-error --retry 5 --retry-delay 3 https://aodxx.github.io/Pem/config.js -o /tmp/config.js
           curl --fail --silent --show-error --retry 5 --retry-delay 3 https://aodxx.github.io/Pem/index.html -o /tmp/index.html
-          grep -F "version: '2.6.1'" /tmp/config.js
+          curl --fail --silent --show-error --retry 5 --retry-delay 3 https://aodxx.github.io/Pem/modern-polish.css -o /tmp/modern-polish.css
+          grep -F "version: '2.6.2'" /tmp/config.js
           grep -F 'name="timeIn" type="time" step="1"' /tmp/index.html
           grep -F 'name="timeOut" type="time" step="1"' /tmp/index.html
+          grep -F 'PALM LEDGER 2.6.2' /tmp/modern-polish.css
       - name: Check production backend health
         run: |
           set -euo pipefail
