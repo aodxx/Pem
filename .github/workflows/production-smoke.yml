@@ -1,0 +1,31 @@
+name: Production smoke
+
+on:
+  workflow_run:
+    workflows: ['Deploy Palm Yield Ledger PWA']
+    types: [completed]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check deployed frontend version and time precision
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --retry 5 --retry-delay 3 https://aodxx.github.io/Pem/config.js -o /tmp/config.js
+          curl --fail --silent --show-error --retry 5 --retry-delay 3 https://aodxx.github.io/Pem/index.html -o /tmp/index.html
+          grep -F "version: '2.6.1'" /tmp/config.js
+          grep -F 'name="timeIn" type="time" step="1"' /tmp/index.html
+          grep -F 'name="timeOut" type="time" step="1"' /tmp/index.html
+      - name: Check production backend health
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --retry 5 --retry-delay 3 \
+            'https://script.google.com/macros/s/AKfycbwttI8iFWVls788jXX-nV_7MZsFvwGkwDaIU3JdfcmEqH9zYYzQ5pxGeSza6NLJqmxQGA/exec?action=health' \
+            -o /tmp/health.json
+          node -e "const fs=require('fs');const x=JSON.parse(fs.readFileSync('/tmp/health.json','utf8'));if(!x.ok)process.exit(1);const d=x.data||{};if(d.service!=='palm-yield-ledger-api')process.exit(1);console.log(JSON.stringify({ok:x.ok,service:d.service,version:d.version,status:d.status||'ok'}));"
