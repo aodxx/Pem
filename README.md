@@ -3,7 +3,7 @@
 เว็บแอปมือถือสำหรับอ่านใบชั่งขายปาล์มด้วย Gemini ตรวจข้อมูลก่อนบันทึก และจัดเก็บประวัติการขาย ค่าแรง รูปใบชั่ง และรายงานไว้ใน Google Sheets/Drive
 
 - แอปที่ใช้งานจริง: <https://aodxx.github.io/Pem/>
-- Frontend/PWA: `2.5.1`
+- Frontend/PWA: `2.6.1`
 - Apps Script Backend: `1.3.0`
 - API: `v1`
 
@@ -23,16 +23,18 @@ npm run dev
 ## โครงสร้างที่ต้องรู้
 
 ```text
-frontend/              หน้าเว็บจริงที่ GitHub Pages เผยแพร่
-apps-script/Code.gs    Backendจริงทั้งระบบในไฟล์เดียว
+frontend/                 หน้าเว็บจริงที่ GitHub Pages เผยแพร่
+apps-script/Code.gs       Backend API หลัก
+apps-script/OwnerTemplate.gs  ตัวติดตั้ง Multi-owner
+apps-script/Backup.gs     ระบบสำรอง/กู้คืนแบบไม่เขียนทับ production
 apps-script/appsscript.json
-tests/                 Static checks และ unit tests
-scripts/               เครื่องมือสำหรับพัฒนาในเครื่อง
-docs/                  API, การติดตั้ง, schema และสถานะโครงการ
-schemas/               JSON Schema สำหรับ Gemini OCR
+tests/                    Static checks และ unit tests
+scripts/                  เครื่องมือสำหรับพัฒนาในเครื่อง
+docs/                     API, การติดตั้ง, schema และสถานะโครงการ
+schemas/                  JSON Schema สำหรับ Gemini OCR
 ```
 
-กติกาสำคัญ: แก้หน้าเว็บใน `frontend/` เท่านั้น และแก้ Backend ใน `apps-script/Code.gs` เท่านั้น ไม่มีสำเนาโค้ดใช้งานจริงที่ root ของ Repository
+กติกาสำคัญ: แก้หน้าเว็บใน `frontend/` เท่านั้น ส่วน Apps Script ใช้ไฟล์ canonical ใน `apps-script/` ไม่มีสำเนาโค้ดใช้งานจริงที่ root ของ Repository
 
 ## การตั้งค่า
 
@@ -48,11 +50,12 @@ npm run check:syntax   # ตรวจ syntaxฝั่งหน้าเว็บ
 npm test               # รันชุดทดสอบของโครงการ
 ```
 
-Pull request ทุกอันจะรันชุดตรวจเดียวกันผ่าน GitHub Actions โดยอัตโนมัติ
+Pull request ทุกอันจะรันชุดตรวจเดียวกันผ่าน GitHub Actions โดยอัตโนมัติ และหลัง GitHub Pages deploy สำเร็จจะมี Production Smoke ตรวจหน้าเว็บจริงกับ backend health อีกชั้นหนึ่ง
 
 ## การเผยแพร่
 
 - Frontend: เมื่อ merge การเปลี่ยนแปลงใน `frontend/` เข้า `main` ระบบจะตรวจสอบและเผยแพร่ผ่าน GitHub Pages อัตโนมัติ
-- Backend: คัดลอก `apps-script/Code.gs` และ manifest เข้า Apps Script Project เดิม ทดสอบ แล้วแก้ Deployment เดิมเป็นเวอร์ชันใหม่เพื่อรักษา URL
+- Backend: คัดลอก `apps-script/Code.gs`, `apps-script/OwnerTemplate.gs`, `apps-script/Backup.gs` และ manifest เข้า Apps Script Project เดิมตามกรณีใช้งาน ทดสอบ แล้วแก้ Deployment เดิมเป็นเวอร์ชันใหม่เพื่อรักษา URL
+- Backup: หลังเพิ่ม `Backup.gs` ให้รัน `createDataBackup()` หนึ่งครั้งเพื่อตรวจสิทธิ์ แล้วรัน `installDailyBackupTrigger()` เพื่อสำรองทุกวัน
 
-อ่านขั้นตอนละเอียดที่ [คู่มือการติดตั้ง](docs/INSTALL.md), [แนวทางร่วมพัฒนา](CONTRIBUTING.md), [สถาปัตยกรรม](ARCHITECTURE.md) และ [สถานะโครงการ](docs/PROGRESS.md)
+อ่านขั้นตอนละเอียดที่ [คู่มือการติดตั้ง](docs/INSTALL.md), [คู่มือ Backup/Restore](docs/BACKUP_RESTORE.md), [แนวทางร่วมพัฒนา](CONTRIBUTING.md), [สถาปัตยกรรม](ARCHITECTURE.md) และ [สถานะโครงการ](docs/PROGRESS.md)
