@@ -14,17 +14,21 @@ jobs:
     if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     steps:
-      - name: Check deployed frontend version and time precision
+      - name: Check deployed frontend version, time precision and developer credit
         run: |
           set -euo pipefail
           curl --fail --silent --show-error --retry 5 --retry-delay 3 https://aodxx.github.io/Pem/config.js -o /tmp/config.js
           curl --fail --silent --show-error --retry 5 --retry-delay 3 https://aodxx.github.io/Pem/index.html -o /tmp/index.html
           curl --fail --silent --show-error --retry 5 --retry-delay 3 https://aodxx.github.io/Pem/contrast-fix.css -o /tmp/contrast-fix.css
-          grep -F "version: '2.6.3'" /tmp/config.js
+          curl --fail --silent --show-error --retry 5 --retry-delay 3 https://aodxx.github.io/Pem/developer-credit.css -o /tmp/developer-credit.css
+          grep -F "version: '2.6.4'" /tmp/config.js
+          grep -F 'Developed by <b>aod</b>' /tmp/config.js
+          grep -F 'https://www.facebook.com/share/1AWvhjdr44/' /tmp/config.js
           grep -F 'name="timeIn" type="time" step="1"' /tmp/index.html
           grep -F 'name="timeOut" type="time" step="1"' /tmp/index.html
           grep -F 'PALM LEDGER 2.6.3' /tmp/contrast-fix.css
           grep -F 'color: #496158 !important;' /tmp/contrast-fix.css
+          grep -F 'PALM LEDGER 2.6.4' /tmp/developer-credit.css
       - name: Check production backend health
         run: |
           set -euo pipefail
