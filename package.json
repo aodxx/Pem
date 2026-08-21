@@ -1,6 +1,6 @@
 {
   "name": "palm-yield-ledger",
-  "version": "2.6.3",
+  "version": "2.6.4",
   "private": true,
   "description": "PALM LEDGER mobile PWA and Google Apps Script backend",
   "type": "module",
