@@ -10,7 +10,7 @@
     apiUrl: savedApiUrl || DEFAULT_API_URL,
     defaultApiUrl: DEFAULT_API_URL,
     multiOwner: true,
-    version: '2.6.3'
+    version: '2.6.4'
   });
 
   // Multi-owner pairing layer. app.js remains owner-agnostic and reads the
@@ -22,6 +22,23 @@
     const tokenInput = document.querySelector('#access-token');
     const saveButton = document.querySelector('#save-settings');
     const resultBox = document.querySelector('#connection-result');
+
+    const settingsView = document.querySelector('#view-settings');
+    if (settingsView && !settingsView.querySelector('.developer-credit')) {
+      const credit = document.createElement('div');
+      credit.className = 'developer-credit';
+      credit.setAttribute('aria-label', 'เครดิตผู้พัฒนา');
+      credit.innerHTML = `
+        <div class="developer-credit-copy">
+          <span>CRAFTED FOR PALM LEDGER</span>
+          <strong>Developed by <b>aod</b></strong>
+        </div>
+        <a class="developer-facebook" href="https://www.facebook.com/share/1AWvhjdr44/" target="_blank" rel="noopener noreferrer" aria-label="Facebook ของผู้พัฒนา aod" title="Facebook — aod">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13.7 22v-9h3l.45-3.5H13.7V7.27c0-1.01.28-1.7 1.73-1.7h1.85V2.44c-.32-.04-1.42-.14-2.7-.14-2.67 0-4.5 1.63-4.5 4.62V9.5H7.05V13h3.03v9h3.62Z"/></svg>
+        </a>`;
+      settingsView.appendChild(credit);
+    }
+
     if (!apiInput || !saveButton) return;
 
     apiInput.readOnly = false;
