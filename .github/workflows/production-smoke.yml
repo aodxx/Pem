@@ -32,7 +32,42 @@ jobs:
       - name: Check production backend health
         run: |
           set -euo pipefail
-          curl --fail --silent --show-error --retry 5 --retry-delay 3 \
+          curl --location --fail --silent --show-error \
+            --connect-timeout 10 --max-time 30 \
+            --retry 5 --retry-delay 3 --retry-all-errors \
             'https://script.google.com/macros/s/AKfycbwttI8iFWVls788jXX-nV_7MZsFvwGkwDaIU3JdfcmEqH9zYYzQ5pxGeSza6NLJqmxQGA/exec?action=health' \
             -o /tmp/health.json
-          node -e "const fs=require('fs');const x=JSON.parse(fs.readFileSync('/tmp/health.json','utf8'));if(!x.ok)process.exit(1);const d=x.data||{};if(d.service!=='palm-yield-ledger-api')process.exit(1);console.log(JSON.stringify({ok:x.ok,service:d.service,version:d.version,status:d.status||'ok'}));"
+
+          if [[ ! -s /tmp/health.json ]]; then
+            echo '::error::Production backend returned an empty response body'
+            exit 1
+          fi
+
+          node <<'NODE'
+          const fs = require('fs');
+
+          const fail = (message) => {
+            console.error(`::error::${message}`);
+            process.exit(1);
+          };
+
+          let response;
+          try {
+            response = JSON.parse(fs.readFileSync('/tmp/health.json', 'utf8'));
+          } catch (error) {
+            fail(`Production backend returned invalid JSON: ${error.message}`);
+          }
+
+          const data = response.data || {};
+          if (response.ok !== true) fail('Production backend reported ok=false');
+          if (data.service !== 'palm-yield-ledger-api') fail(`Unexpected backend service: ${data.service || 'missing'}`);
+          if (data.version !== '1.3.0') fail(`Unexpected backend version: ${data.version || 'missing'}`);
+          if (data.status !== 'ready') fail(`Production backend is not ready: ${data.status || 'missing'}`);
+
+          console.log(JSON.stringify({
+            ok: response.ok,
+            service: data.service,
+            version: data.version,
+            status: data.status,
+          }));
+          NODE
