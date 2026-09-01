@@ -7,6 +7,9 @@ const styles = fs.readFileSync('frontend/styles-v2.css', 'utf8');
 const contrast = fs.readFileSync('frontend/contrast-fix.css', 'utf8');
 const developerCredit = fs.readFileSync('frontend/developer-credit.css', 'utf8');
 const backup = fs.readFileSync('apps-script/Backup.gs', 'utf8');
+const productionSmoke = fs.readFileSync('.github/workflows/production-smoke.yml', 'utf8');
+const ciWorkflow = fs.readFileSync('.github/workflows/ci.yml', 'utf8');
+const deployWorkflow = fs.readFileSync('.github/workflows/deploy-pages.yml', 'utf8');
 const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
 
 function assert(condition, message) {
@@ -35,5 +38,22 @@ for (const fn of ['createDataBackup', 'installDailyBackupTrigger', 'getBackupSta
 }
 assert(backup.includes("retentionCount: 30"), 'backup retention must be explicit');
 assert(!backup.includes('setContent('), 'restore helper must not overwrite production content');
+
+for (const required of [
+  '--location',
+  '--max-time 30',
+  '--retry-all-errors',
+  '[[ ! -s /tmp/health.json ]]',
+  "data.version !== '1.3.0'",
+  "data.status !== 'ready'",
+]) {
+  assert(productionSmoke.includes(required), `production smoke is missing: ${required}`);
+}
+
+for (const workflow of [ciWorkflow, deployWorkflow]) {
+  assert(workflow.includes('actions/checkout@v5'), 'workflow must use the Node.js 24 checkout runtime');
+}
+assert(ciWorkflow.includes('actions/setup-node@v5'), 'CI must use the Node.js 24 setup-node runtime');
+assert(deployWorkflow.includes('actions/setup-node@v5'), 'Pages validation must use the Node.js 24 setup-node runtime');
 
 console.log('production closeout static checks passed');
