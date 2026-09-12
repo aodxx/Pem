@@ -652,7 +652,7 @@ function analyzeReceipt_(payload, requestId) {
         receipt: receipt,
         validation: validation,
         lowConfidenceFields: getLowConfidenceFields_(receipt, Number(settings.LOW_CONFIDENCE_THRESHOLD || 0.75)),
-        duplicateCandidates: []
+        duplicateCandidates: findDuplicateCandidates_(receipt, existing.ImageSha256 || '')
       };
     }
     if (status === 'FAILED') {
