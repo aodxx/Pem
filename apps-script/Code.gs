@@ -609,13 +609,73 @@ function requireAccessToken_(payload) {
 }
 
 // ===== GeminiService.gs =====
+function findLatestOcrRunByRequestId_(requestId) {
+  const key = String(requestId || '').trim();
+  if (!key) return null;
+  const sheet = getSheetOrThrow_('OCRRuns');
+  const headers = readHeaders_(sheet);
+  if (!headers.length || sheet.getLastRow() < 2) return null;
+  const requestIndex = headers.indexOf('RequestID');
+  if (requestIndex < 0) return null;
+  const values = sheet.getRange(2, 1, sheet.getLastRow() - 1, headers.length).getValues();
+  for (let i = values.length - 1; i >= 0; i -= 1) {
+    if (String(values[i][requestIndex] || '').trim() !== key) continue;
+    const record = {};
+    headers.forEach(function (header, index) { record[header] = values[i][index]; });
+    return record;
+  }
+  return null;
+}
+
+function parseOcrJsonCell_(value, fallback) {
+  if (value && typeof value === 'object') return value;
+  try { return value ? JSON.parse(String(value)) : fallback; } catch (error) { return fallback; }
+}
+
 function analyzeReceipt_(payload, requestId) {
   const startedAt = Date.now();
-  const image = validateImage_(payload.image || {});
   const settings = readSettings_();
   const model = String(settings.GEMINI_MODEL || 'gemini-3.6-flash');
   const schemaVersion = String(settings.GEMINI_SCHEMA_VERSION || '1.0.0');
+  const existing = findLatestOcrRunByRequestId_(requestId);
+  if (existing) {
+    const status = String(existing.Status || '').toUpperCase();
+    if (status === 'PROCESSING') return { state: 'PROCESSING', ocrRunId: existing.OCRRunID, requestId: requestId };
+    if (status === 'COMPLETED') {
+      const receipt = parseOcrJsonCell_(existing.ExtractedJSON, {});
+      const validation = validateSaleDraft_(receipt, false);
+      return {
+        state: 'COMPLETED',
+        ocrRunId: existing.OCRRunID,
+        model: existing.Model || model,
+        schemaVersion: existing.SchemaVersion || schemaVersion,
+        receipt: receipt,
+        validation: validation,
+        lowConfidenceFields: getLowConfidenceFields_(receipt, Number(settings.LOW_CONFIDENCE_THRESHOLD || 0.75)),
+        duplicateCandidates: []
+      };
+    }
+    if (status === 'FAILED') {
+      return { state: 'FAILED', ocrRunId: existing.OCRRunID, requestId: requestId, errorCode: existing.ErrorCode || 'OCR_FAILED', message: 'AI อ่านบิลไม่สำเร็จ กรุณาลองใหม่อีกครั้ง' };
+    }
+  }
+  const image = validateImage_(payload.image || {});
   const ocrRunId = createId_('OCR');
+  appendObjectRow_('OCRRuns', {
+    OCRRunID: ocrRunId,
+    RequestID: requestId,
+    ImageSha256: payload.image && payload.image.sha256 || sha256Hex_(image.base64),
+    Model: model,
+    SchemaVersion: schemaVersion,
+    Status: 'PROCESSING',
+    OverallConfidence: 0,
+    MissingFieldsJSON: [],
+    WarningsJSON: [],
+    ExtractedJSON: {},
+    DurationMs: 0,
+    ErrorCode: '',
+    CreatedAt: nowIso_()
+  });
   try {
     const extracted = callGeminiReceipt_(image, model, schemaVersion);
     const normalized = normalizeReceipt_(extracted);
