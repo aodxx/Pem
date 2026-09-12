@@ -35,7 +35,10 @@ function init() {
 }
 
 function bindNavigation() {
-  $$('.nav-item').forEach(button => button.addEventListener('click', () => showView(button.dataset.view)));
+  $$('.nav-item').forEach(button => button.addEventListener('click', () => {
+    showView(button.dataset.view);
+    if (button.classList.contains('capture-nav')) $('#camera-input')?.click();
+  }));
   $('#profile-settings-button').addEventListener('click', () => showView('settings'));
 }
 

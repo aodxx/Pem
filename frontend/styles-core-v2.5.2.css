@@ -29,7 +29,7 @@ html { scroll-behavior: smooth; }
 body {
   margin: 0;
   min-height: 100vh;
-  padding-bottom: 108px;
+  padding-bottom: calc(110px + env(safe-area-inset-bottom, 0px));
   background: radial-gradient(circle at 100% 0, rgba(185, 243, 75, .12), transparent 30rem), linear-gradient(180deg, #f6f4ed 0, var(--sand) 100%);
 }
 button, input, select, textarea { font: inherit; }
@@ -320,12 +320,15 @@ label.low-confidence input { border-color: #d66b43; background: #fff5ef; box-sha
 .about div:last-child { border: 0; }
 .about dt { color: var(--muted); }
 .about dd { margin: 0; font-weight: 900; }
-.bottom-nav { position: fixed; z-index: 40; right: 0; bottom: 0; left: 0; display: grid; grid-template-columns: repeat(3, 1fr); width: min(100% - 20px, 570px); margin: 0 auto max(9px, env(safe-area-inset-bottom)); padding: 7px; border: 1px solid rgba(255,255,255,.1); border-radius: 22px; color: var(--white); background: rgba(7, 27, 21, .95); box-shadow: 0 15px 45px rgba(7,27,21,.28); backdrop-filter: blur(18px); }
-.nav-item { display: flex; min-height: 58px; flex-direction: column; align-items: center; justify-content: center; gap: 3px; border: 0; border-radius: 16px; color: rgba(255,255,255,.52); background: transparent; }
+.bottom-nav { position: fixed; z-index: 40; right: 0; bottom: 0; left: 0; display: grid; grid-template-columns: repeat(3, 1fr); align-items: end; width: min(100% - 20px, 570px); height: calc(72px + env(safe-area-inset-bottom, 0px)); margin: 0 auto; padding: 0 7px env(safe-area-inset-bottom, 0px); border: 1px solid rgba(255,255,255,.1); border-radius: 22px 22px 0 0; color: var(--white); background: rgba(7, 27, 21, .95); box-shadow: 0 15px 45px rgba(7,27,21,.28); backdrop-filter: blur(18px); }
+.bottom-nav::before { content: ""; position: absolute; z-index: -1; top: -27px; left: 50%; width: 90px; height: 43px; transform: translateX(-50%); border-radius: 46px 46px 0 0; background: var(--sand); box-shadow: 0 -1px 0 rgba(16,47,36,.08); pointer-events: none; }
+.nav-item { display: flex; min-width: 48px; min-height: 48px; flex-direction: column; align-items: center; justify-content: center; gap: 3px; border: 0; border-radius: 16px; color: rgba(255,255,255,.52); background: transparent; }
 .nav-item .nav-icon { display: grid; place-items: center; width: 25px; height: 25px; font-size: 1.28rem; line-height: 1; }
 .nav-item b { font-size: .65rem; }
 .nav-item.active { color: var(--forest-950); background: var(--leaf); }
-.nav-item.capture-nav .nav-icon { font-size: 1.38rem; }
+.nav-item.capture-nav { position: relative; z-index: 2; align-self: start; width: 66px; height: 66px; min-width: 66px; min-height: 66px; justify-self: center; margin-top: -26px; gap: 2px; border: 5px solid var(--sand); border-radius: 50%; color: var(--forest-950); background: var(--leaf); box-shadow: 0 10px 24px rgba(7,27,21,.28); }
+.nav-item.capture-nav .nav-icon { width: 27px; height: 27px; font-size: 1.38rem; }
+.nav-item.capture-nav b { font-size: .56rem; line-height: 1; }
 .loading { position: fixed; z-index: 80; inset: 0; display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 14px; color: var(--white); background: rgba(7, 27, 21, .82); backdrop-filter: blur(7px); }
 .loading-animation { position: relative; display: grid; place-items: center; width: 124px; height: 124px; }
 .loading-animation > svg { display: block; width: 100% !important; height: 100% !important; filter: drop-shadow(0 12px 30px rgba(0,0,0,.2)); }
@@ -365,6 +368,7 @@ label.low-confidence input { border-color: #d66b43; background: #fff5ef; box-sha
   .hero-orbit { width: 46px; height: 46px; }
   .hero h1 { max-width: 88%; font-size: 2rem; }
   .camera-action { min-height: 112px; padding: 16px; }
+  .bottom-nav { width: min(100% - 12px, 570px); }
   .action-icon { width: 51px; height: 51px; }
   .action-copy strong { font-size: .98rem; }
   .action-copy em { display: none; }
@@ -387,6 +391,8 @@ label.low-confidence input { border-color: #d66b43; background: #fff5ef; box-sha
   .hero h1 { font-size: 1.78rem; }
   .hero p { font-size: .8rem; }
   .camera-action { gap: 10px; }
+  .bottom-nav { width: calc(100% - 8px); }
+  .bottom-nav::before { width: 86px; }
   .action-arrow { display: none; }
   .alternate-actions { grid-template-columns: 1fr; }
   .form-grid, .form-grid.three { grid-template-columns: 1fr; }
