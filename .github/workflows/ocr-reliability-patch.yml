@@ -10,16 +10,16 @@ permissions:
 
 jobs:
   patch:
-    if: ${{ hashFiles('.ocr-reliability-trigger') != '' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           ref: fix/ocr-reliability-impl
           fetch-depth: 0
-      - name: Patch OCR reliability
-        shell: python
+      - name: Apply patch once
         run: |
+          if [ ! -f .ocr-reliability-trigger ]; then exit 0; fi
+          python3 - <<'PY'
           from pathlib import Path
           import re
 
@@ -27,11 +27,10 @@ jobs:
           s = app.read_text(encoding='utf-8')
           old = "const body = { ...payload, action, requestId: crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}` };"
           new = "const body = { ...payload, action, requestId: options.requestId || (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`) };"
-          if old not in s:
-              raise SystemExit('api requestId line not found')
-          s = s.replace(old, new, 1)
+          if old in s:
+              s = s.replace(old, new, 1)
 
-          pattern = re.compile(r"async function analyzeImage\\(\\) \\{.*?\\n\\}\\n\\nfunction openManualForm\\(\\)", re.S)
+          pattern = re.compile(r"async function analyzeImage\(\) \{.*?\n\}\n\nfunction openManualForm\(\)", re.S)
           replacement = '''async function analyzeImage() {
             if (!ensureConnected()) return;
             if (!state.previewDataUrl) return toast('กรุณาเลือกรูปใบชั่งก่อน');
@@ -157,12 +156,10 @@ jobs:
               raise SystemExit('analyzeReceipt header not found')
           s = s.replace(old, new, 1)
           code.write_text(s, encoding='utf-8')
-
-      - name: Commit patch and remove trigger
-        run: |
+          PY
           rm -f .ocr-reliability-trigger .github/workflows/ocr-reliability-patch.yml
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add frontend/app.js apps-script/Code.gs .ocr-reliability-trigger .github/workflows/ocr-reliability-patch.yml
-          git commit -m "fix: make receipt OCR recoverable after timeout" \
-            && git push origin fix/ocr-reliability-impl
+          git commit -m "fix: make receipt OCR recoverable after timeout"
+          git push origin fix/ocr-reliability-impl
