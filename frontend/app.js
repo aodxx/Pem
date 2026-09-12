@@ -635,13 +635,36 @@ async function renderImage(dataUrl, rotation) {
 async function analyzeImage() {
   if (!ensureConnected()) return;
   if (!state.previewDataUrl) return toast('กรุณาเลือกรูปใบชั่งก่อน');
-  setLoading(true, 'Gemini กำลังอ่านใบชั่ง…');
+  const requestId = crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
+  setLoading(true, 'กำลังส่งบิลให้ AI อ่าน…');
   try {
     const image = await imagePayload(state.previewDataUrl);
-    const data = await api('sales.analyze', { image, source: state.source, schemaVersion: '1.0.0' }, true, { timeoutMs: 90000 });
-    state.receipt = data.receipt; state.ocrRunId = data.ocrRunId; state.model = data.model;
-    openReview(data.receipt, data.lowConfidenceFields || [], data.validation, false);
-    if (data.duplicateCandidates && data.duplicateCandidates.length) showValidation({ warnings: [{ message: 'พบรายการเดิมที่คล้ายกัน โปรดตรวจสอบก่อนบันทึก' }] });
+    const payload = { image, source: state.source, schemaVersion: '1.0.0' };
+    const maxAttempts = 30;
+    let lastError = null;
+    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+      try {
+        if (attempt > 0) setLoading(true, 'AI ยังประมวลผลอยู่… กำลังตรวจผลให้อัตโนมัติ');
+        const data = await api('sales.analyze', payload, true, { timeoutMs: attempt === 0 ? 90000 : 20000, requestId });
+        if (data && data.state === 'PROCESSING') {
+          await new Promise(resolve => setTimeout(resolve, 4000));
+          continue;
+        }
+        if (data && data.state === 'FAILED') {
+          throw appError(data.errorCode || 'OCR_FAILED', data.message || 'AI อ่านบิลไม่สำเร็จ');
+        }
+        state.receipt = data.receipt; state.ocrRunId = data.ocrRunId; state.model = data.model;
+        openReview(data.receipt, data.lowConfidenceFields || [], data.validation, false);
+        if (data.duplicateCandidates && data.duplicateCandidates.length) showValidation({ warnings: [{ message: 'พบรายการเดิมที่คล้ายกัน โปรดตรวจสอบก่อนบันทึก' }] });
+        return;
+      } catch (error) {
+        lastError = error;
+        if (!['REQUEST_TIMEOUT', 'NETWORK_ERROR', 'INVALID_RESPONSE'].includes(error.code)) throw error;
+        if (attempt === maxAttempts - 1) throw error;
+        await new Promise(resolve => setTimeout(resolve, 3000));
+      }
+    }
+    if (lastError) throw lastError;
   } catch (error) { handleError(error); }
   finally { setLoading(false); }
 }
@@ -983,7 +1006,7 @@ async function saveSettings() {
 }
 
 async function api(action, payload = {}, includeToken = true, options = {}) {
-  const body = { ...payload, action, requestId: crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}` };
+  const body = { ...payload, action, requestId: options.requestId || (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`) };
   if (includeToken && action !== 'health') body.accessToken = state.accessToken;
   const controller = new AbortController();
   const timeoutMs = Number(options.timeoutMs || (action === 'sales.analyze' ? 90000 : 45000));
