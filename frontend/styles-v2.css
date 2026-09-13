@@ -3,3 +3,8 @@
 @import url("./modern-polish.css");
 @import url("./contrast-fix.css");
 @import url("./developer-credit.css");
+
+/* PALM LEDGER 2.0 — visual-only upgrade layer.
+   Keep this import LAST so the visual upgrade wins over previous polish layers.
+   No business logic, API, form IDs or data flow are changed. */
+@import url("./visual-upgrade.css");
