@@ -11,6 +11,7 @@
     "dev": "node scripts/dev-server.mjs",
     "check:syntax": "node --check frontend/app.js && node --check frontend/sw.js && node --check frontend/config.js",
     "test": "node tests/repo-hygiene.mjs && node tests/static-check.mjs && node tests/multi-owner-static.mjs && node tests/v1-static-check.mjs && node tests/v1-backend-unit.mjs && node tests/labor-v1.3-unit.mjs && node tests/production-closeout-static.mjs",
+    "test:bottom-nav": "python3 tests/bottom-navigation-viewport.py",
     "check": "npm run check:syntax && npm test"
   }
 }
