@@ -622,6 +622,7 @@ function findLatestOcrRunByRequestId_(requestId) {
     if (String(values[i][requestIndex] || '').trim() !== key) continue;
     const record = {};
     headers.forEach(function (header, index) { record[header] = values[i][index]; });
+    record.__rowNumber = i + 2;
     return record;
   }
   return null;
@@ -632,50 +633,78 @@ function parseOcrJsonCell_(value, fallback) {
   try { return value ? JSON.parse(String(value)) : fallback; } catch (error) { return fallback; }
 }
 
+function isOcrProcessingExpired_(record, nowMs) {
+  const value = record && record.CreatedAt;
+  const startedAt = value instanceof Date ? value.getTime() : Date.parse(String(value || ''));
+  // A missing/unparseable timestamp is treated as stale so a malformed row cannot block retries forever.
+  return !isFinite(startedAt) || Number(nowMs === undefined ? Date.now() : nowMs) - startedAt >= 7 * 60 * 1000;
+}
+
+function cachedOcrResult_(record, settings, defaultModel, defaultSchemaVersion, requestId) {
+  const receipt = parseOcrJsonCell_(record.ExtractedJSON, {});
+  return {
+    state: 'COMPLETED',
+    ocrRunId: record.OCRRunID,
+    requestId: requestId,
+    model: record.Model || defaultModel,
+    schemaVersion: record.SchemaVersion || defaultSchemaVersion,
+    receipt: receipt,
+    validation: validateSaleDraft_(receipt, false),
+    lowConfidenceFields: getLowConfidenceFields_(receipt, Number(settings.LOW_CONFIDENCE_THRESHOLD || 0.75)),
+    duplicateCandidates: []
+  };
+}
+
 function analyzeReceipt_(payload, requestId) {
   const startedAt = Date.now();
   const settings = readSettings_();
   const model = String(settings.GEMINI_MODEL || 'gemini-3.6-flash');
   const schemaVersion = String(settings.GEMINI_SCHEMA_VERSION || '1.0.0');
-  const existing = findLatestOcrRunByRequestId_(requestId);
-  if (existing) {
-    const status = String(existing.Status || '').toUpperCase();
-    if (status === 'PROCESSING') return { state: 'PROCESSING', ocrRunId: existing.OCRRunID, requestId: requestId };
-    if (status === 'COMPLETED') {
-      const receipt = parseOcrJsonCell_(existing.ExtractedJSON, {});
-      const validation = validateSaleDraft_(receipt, false);
-      return {
-        state: 'COMPLETED',
-        ocrRunId: existing.OCRRunID,
-        model: existing.Model || model,
-        schemaVersion: existing.SchemaVersion || schemaVersion,
-        receipt: receipt,
-        validation: validation,
-        lowConfidenceFields: getLowConfidenceFields_(receipt, Number(settings.LOW_CONFIDENCE_THRESHOLD || 0.75)),
-        duplicateCandidates: findDuplicateCandidates_(receipt, existing.ImageSha256 || '')
-      };
-    }
-    if (status === 'FAILED') {
-      return { state: 'FAILED', ocrRunId: existing.OCRRunID, requestId: requestId, errorCode: existing.ErrorCode || 'OCR_FAILED', message: 'AI อ่านบิลไม่สำเร็จ กรุณาลองใหม่อีกครั้ง' };
-    }
-  }
   const image = validateImage_(payload.image || {});
-  const ocrRunId = createId_('OCR');
-  appendObjectRow_('OCRRuns', {
-    OCRRunID: ocrRunId,
-    RequestID: requestId,
-    ImageSha256: payload.image && payload.image.sha256 || sha256Hex_(image.base64),
-    Model: model,
-    SchemaVersion: schemaVersion,
-    Status: 'PROCESSING',
-    OverallConfidence: 0,
-    MissingFieldsJSON: [],
-    WarningsJSON: [],
-    ExtractedJSON: {},
-    DurationMs: 0,
-    ErrorCode: '',
-    CreatedAt: nowIso_()
-  });
+  let ocrRunId;
+  const lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+  runtimeWriteLockHeld_ = true;
+  try {
+    const existing = findLatestOcrRunByRequestId_(requestId);
+    if (existing) {
+      const status = String(existing.Status || '').toUpperCase();
+      if (status === 'PROCESSING' && !isOcrProcessingExpired_(existing, Date.now())) {
+        return { state: 'PROCESSING', ocrRunId: existing.OCRRunID, requestId: requestId };
+      }
+      if (status === 'SUCCESS' || status === 'LOW_CONFIDENCE' || status === 'COMPLETED') {
+        return cachedOcrResult_(existing, settings, model, schemaVersion, requestId);
+      }
+      if (status === 'FAILED') {
+        return { state: 'FAILED', ocrRunId: existing.OCRRunID, requestId: requestId, errorCode: existing.ErrorCode || 'OCR_FAILED', message: 'AI อ่านบิลไม่สำเร็จ กรุณาลองใหม่อีกครั้ง' };
+      }
+      if (status === 'PROCESSING' && existing.__rowNumber) {
+        const staleStartedAt = Date.parse(String(existing.CreatedAt || ''));
+        updateObjectRow_('OCRRuns', existing.__rowNumber, Object.assign({}, existing, {
+          Status: 'STALE', ErrorCode: 'PROCESSING_TIMEOUT', DurationMs: isFinite(staleStartedAt) ? Math.max(0, Date.now() - staleStartedAt) : 0
+        }));
+      }
+    }
+    ocrRunId = createId_('OCR');
+    appendObjectRow_('OCRRuns', {
+      OCRRunID: ocrRunId,
+      RequestID: requestId,
+      ImageSha256: payload.image && payload.image.sha256 || sha256Hex_(image.base64),
+      Model: model,
+      SchemaVersion: schemaVersion,
+      Status: 'PROCESSING',
+      OverallConfidence: 0,
+      MissingFieldsJSON: [],
+      WarningsJSON: [],
+      ExtractedJSON: {},
+      DurationMs: 0,
+      ErrorCode: '',
+      CreatedAt: nowIso_()
+    });
+  } finally {
+    runtimeWriteLockHeld_ = false;
+    lock.releaseLock();
+  }
   try {
     const extracted = callGeminiReceipt_(image, model, schemaVersion);
     const normalized = normalizeReceipt_(extracted);
@@ -700,7 +729,9 @@ function analyzeReceipt_(payload, requestId) {
       CreatedAt: nowIso_()
     });
     return {
+      state: 'COMPLETED',
       ocrRunId: ocrRunId,
+      requestId: requestId,
       model: model,
       schemaVersion: schemaVersion,
       receipt: normalized,
@@ -765,16 +796,34 @@ function callGeminiReceipt_(image, model, schemaVersion) {
       responseJsonSchema: getGeminiReceiptJsonSchema_()
     }
   };
-  const response = UrlFetchApp.fetch(url, {
-    method: 'post', contentType: 'application/json', payload: JSON.stringify(body), muteHttpExceptions: true
-  });
+  let response = null;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      response = UrlFetchApp.fetch(url, {
+        method: 'post', contentType: 'application/json', payload: JSON.stringify(body), muteHttpExceptions: true
+      });
+    } catch (error) {
+      if (attempt >= 2) throw new AppError('GEMINI_NETWORK_ERROR', 'เชื่อมต่อ Gemini ไม่สำเร็จหลังลองซ้ำ', { message: error && error.message });
+      Utilities.sleep(1000 * Math.pow(2, attempt));
+      continue;
+    }
+    const status = response.getResponseCode();
+    if (status >= 200 && status < 300) break;
+    const retryable = [408, 429, 500, 502, 503, 504].indexOf(status) >= 0;
+    if (retryable && attempt < 2) {
+      Utilities.sleep(1000 * Math.pow(2, attempt));
+      continue;
+    }
+    let failureData;
+    try { failureData = JSON.parse(response.getContentText() || '{}'); } catch (ignore) { failureData = {}; }
+    const failureMessage = failureData && failureData.error && failureData.error.message || 'HTTP ' + status;
+    const failureCode = status === 429 ? 'RATE_LIMITED' : retryable ? 'GEMINI_UNAVAILABLE' : 'OCR_FAILED';
+    throw new AppError(failureCode, 'Gemini API HTTP ' + status + ': ' + failureMessage, { httpStatus: status });
+  }
+  if (!response) throw new AppError('GEMINI_NETWORK_ERROR', 'เชื่อมต่อ Gemini ไม่สำเร็จ');
   const status = response.getResponseCode();
   let data;
   try { data = JSON.parse(response.getContentText() || '{}'); } catch (ignore) { data = {}; }
-  if (status < 200 || status >= 300) {
-    const message = data && data.error && data.error.message || 'HTTP ' + status;
-    throw new AppError(status === 429 ? 'RATE_LIMITED' : 'OCR_FAILED', 'Gemini API: ' + message);
-  }
   const parts = data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts || [];
   const jsonText = parts.map(function (part) { return part.text || ''; }).join('').trim();
   if (!jsonText) throw new AppError('OCR_FAILED', 'Gemini ไม่ได้ส่งข้อมูล JSON กลับมา');

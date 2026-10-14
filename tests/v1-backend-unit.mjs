@@ -78,10 +78,71 @@ if (!dateOutlier.warnings.some(item => item.code === 'DATE_OUTLIER')) throw new 
 const schema = context.getGeminiReceiptJsonSchema_();
 if (!schema.required.includes('netWeightKg') || !schema.properties.deductions) throw new Error('Gemini schema incomplete');
 
+context.LockService = { getScriptLock: () => ({ waitLock() {}, releaseLock() {} }) };
+context.validateImage_ = image => image;
+const cachedReceipt = { ...normalized, fieldConfidence: [{ field: 'netWeightKg', confidence: .3 }] };
+let geminiInvocations = 0;
+let appendedRows = 0;
+const originalGeminiReceiptCall = context.callGeminiReceipt_;
+context.appendObjectRow_ = () => { appendedRows += 1; };
+context.callGeminiReceipt_ = () => { geminiInvocations += 1; throw new Error('Gemini must not run for a completed request'); };
+for (const status of ['SUCCESS', 'LOW_CONFIDENCE']) {
+  context.findLatestOcrRunByRequestId_ = () => ({
+    OCRRunID: `OCR_${status}`, Status: status, Model: 'gemini-test', SchemaVersion: '1.0.0',
+    ExtractedJSON: JSON.stringify(cachedReceipt), CreatedAt: new Date().toISOString()
+  });
+  const cached = context.analyzeReceipt_({ image: { mimeType: 'image/jpeg', base64: 'YWJj', sha256: 'abc' } }, `REQ_${status}`);
+  if (cached.state !== 'COMPLETED' || cached.receipt.netWeightKg !== normalized.netWeightKg) throw new Error(`${status} OCR result was not replayed`);
+  if (!cached.lowConfidenceFields.includes('netWeightKg')) throw new Error(`${status} confidence metadata was not replayed`);
+}
+if (geminiInvocations || appendedRows) throw new Error('Completed OCR request was unexpectedly processed again');
+
+const nowMs = Date.now();
+if (!context.isOcrProcessingExpired_({ CreatedAt: new Date(nowMs - 8 * 60 * 1000).toISOString() }, nowMs)) throw new Error('Stale OCR processing lease was not expired');
+if (context.isOcrProcessingExpired_({ CreatedAt: new Date(nowMs - 60 * 1000).toISOString() }, nowMs)) throw new Error('Active OCR processing lease expired too early');
+
+let staleRowUpdate = null;
+const recoveryRows = [];
+let recoveryGeminiCalls = 0;
+context.findLatestOcrRunByRequestId_ = () => ({
+  OCRRunID: 'OCR_OLD', RequestID: 'REQ_STALE', Status: 'PROCESSING', CreatedAt: new Date(nowMs - 8 * 60 * 1000).toISOString(), __rowNumber: 2
+});
+context.updateObjectRow_ = (sheet, row, record) => { staleRowUpdate = { sheet, row, record }; };
+context.appendObjectRow_ = (sheet, record) => { recoveryRows.push({ sheet, record }); };
+context.createId_ = () => 'OCR_NEW';
+context.callGeminiReceipt_ = () => { recoveryGeminiCalls += 1; return normalized; };
+const recovered = context.analyzeReceipt_({ image: { mimeType: 'image/jpeg', base64: 'YWJj', sha256: 'abc' } }, 'REQ_STALE');
+if (!staleRowUpdate || staleRowUpdate.record.Status !== 'STALE' || staleRowUpdate.record.ErrorCode !== 'PROCESSING_TIMEOUT') throw new Error('Stale OCR row was not marked for recovery');
+if (recoveryRows[0].record.Status !== 'PROCESSING' || recoveryRows[1].record.Status !== 'SUCCESS' || recoveryGeminiCalls !== 1 || recovered.state !== 'COMPLETED') throw new Error('Stale OCR request was not restarted and completed');
+
+context.callGeminiReceipt_ = originalGeminiReceiptCall;
+context.PropertiesService = { getScriptProperties: () => ({ getProperty: () => 'test-key' }) };
+context.Utilities.sleep = () => {};
+let fetchAttempts = 0;
+const extractedText = JSON.stringify({ documentType: 'UNKNOWN', overallConfidence: .2 });
+context.UrlFetchApp = { fetch: () => {
+  fetchAttempts += 1;
+  const status = fetchAttempts === 1 ? 503 : 200;
+  const content = status === 503
+    ? JSON.stringify({ error: { message: 'temporarily unavailable' } })
+    : JSON.stringify({ candidates: [{ content: { parts: [{ text: extractedText }] } }] });
+  return { getResponseCode: () => status, getContentText: () => content };
+} };
+const retriedResult = context.callGeminiReceipt_({ mimeType: 'image/jpeg', base64: 'YWJj' }, 'gemini-test', '1.0.0');
+if (fetchAttempts !== 2 || retriedResult.overallConfidence !== .2) throw new Error('Gemini transient 503 was not retried successfully');
+fetchAttempts = 0;
+context.UrlFetchApp.fetch = () => {
+  fetchAttempts += 1;
+  return { getResponseCode: () => 503, getContentText: () => JSON.stringify({ error: { message: 'high demand' } }) };
+};
+let unavailableCode = '';
+try { context.callGeminiReceipt_({ mimeType: 'image/jpeg', base64: 'YWJj' }, 'gemini-test', '1.0.0'); }
+catch (error) { unavailableCode = error.code; }
+if (fetchAttempts !== 3 || unavailableCode !== 'GEMINI_UNAVAILABLE') throw new Error('Exhausted Gemini retries were not reported as temporary unavailability');
+
 context.getIdempotentSale_ = key => key === 'saved-key' ? { SaleID: 'SALE_SAVED', NetAmount: 12500 } : null;
 const savedStatus = context.getSaleSaveStatus_('saved-key');
 const pendingStatus = context.getSaleSaveStatus_('pending-key');
 if (!savedStatus.saved || savedStatus.sale.SaleID !== 'SALE_SAVED' || pendingStatus.saved) throw new Error('Save status lookup failed');
 
-console.log(JSON.stringify({ ok: true, validationWarnings: mismatch.warnings.length, duplicateScore: duplicates[0].score, summary, saveStatus: savedStatus.state }, null, 2));
-
+console.log(JSON.stringify({ ok: true, validationWarnings: mismatch.warnings.length, duplicateScore: duplicates[0].score, summary, saveStatus: savedStatus.state, ocrCacheStatuses: ['SUCCESS', 'LOW_CONFIDENCE'], staleOcrRecovered: true, geminiRetryAttempts: [2, fetchAttempts] }, null, 2));

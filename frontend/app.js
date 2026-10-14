@@ -5,7 +5,7 @@ const $ = selector => document.querySelector(selector);
 const $$ = selector => Array.from(document.querySelectorAll(selector));
 const state = {
   accessToken: localStorage.getItem('palmAccessToken') || '', originalDataUrl: '', previewDataUrl: '', rotation: 0,
-  source: 'MANUAL', receipt: null, ocrRunId: '', model: '', editingSaleId: '', expectedUpdatedAt: '', installPrompt: null,
+  source: 'MANUAL', receipt: null, ocrRunId: '', ocrRequestId: '', model: '', editingSaleId: '', expectedUpdatedAt: '', installPrompt: null,
   syncInProgress: false, viewingSaleId: '', viewingSaleDetail: null, contractors: [], pendingContractorRow: null,
   editingContractorId: '', contractorsLoaded: false
 };
@@ -597,16 +597,26 @@ function paymentMethodLabel(method) {
 }
 
 async function selectImage(event, source) {
-  const file = event.target.files && event.target.files[0];
-  event.target.value = '';
+  const input = event.target;
+  const file = input.files && input.files[0];
   if (!file) return;
-  if (!/^image\/(jpeg|png|webp)$/i.test(file.type)) return toast('รองรับเฉพาะรูป JPEG, PNG และ WebP');
-  if (file.size > 14 * 1024 * 1024) return toast('รูปต้นฉบับใหญ่เกิน 14 MB กรุณาเลือกรูปอื่น');
-  state.source = source; state.rotation = 0; state.originalDataUrl = await readFileAsDataUrl(file);
-  state.previewDataUrl = await renderImage(state.originalDataUrl, 0);
-  $('#image-preview').src = state.previewDataUrl;
-  $('#preview-panel').classList.remove('hidden'); $('#review-panel').classList.add('hidden');
-  $('#preview-panel').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  try {
+    if (file.size > 14 * 1024 * 1024) return toast('รูปต้นฉบับใหญ่เกิน 14 MB กรุณาเลือกรูปอื่น');
+    const mimeType = imageMimeTypeForFile(file);
+    if (!mimeType) return toast('ไฟล์นี้ไม่ใช่รูปภาพที่รองรับ กรุณาเลือกไฟล์รูป');
+    const dataUrl = normalizeImageDataUrl(await readFileAsDataUrl(file), mimeType);
+    const previewDataUrl = await renderImage(dataUrl, 0);
+    state.source = source; state.rotation = 0; state.originalDataUrl = dataUrl;
+    state.previewDataUrl = previewDataUrl; state.ocrRequestId = '';
+    $('#image-preview').src = state.previewDataUrl;
+    $('#preview-panel').classList.remove('hidden'); $('#review-panel').classList.add('hidden');
+    $('#preview-panel').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  } catch (error) {
+    console.error('Image selection failed', error);
+    toast('เปิดรูปนี้ไม่สำเร็จ กรุณาลองเลือกรูปอื่นหรือถ่ายใหม่');
+  } finally {
+    input.value = '';
+  }
 }
 
 async function rotateImage(amount) {
@@ -635,12 +645,13 @@ async function renderImage(dataUrl, rotation) {
 async function analyzeImage() {
   if (!ensureConnected()) return;
   if (!state.previewDataUrl) return toast('กรุณาเลือกรูปใบชั่งก่อน');
-  const requestId = crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
+  const requestId = state.ocrRequestId || (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`);
+  state.ocrRequestId = requestId;
   setLoading(true, 'กำลังส่งบิลให้ AI อ่าน…');
   try {
     const image = await imagePayload(state.previewDataUrl);
     const payload = { image, source: state.source, schemaVersion: '1.0.0' };
-    const maxAttempts = 30;
+    const maxAttempts = 45;
     let lastError = null;
     for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
       try {
@@ -651,26 +662,32 @@ async function analyzeImage() {
           continue;
         }
         if (data && data.state === 'FAILED') {
+          state.ocrRequestId = '';
           throw appError(data.errorCode || 'OCR_FAILED', data.message || 'AI อ่านบิลไม่สำเร็จ');
         }
         state.receipt = data.receipt; state.ocrRunId = data.ocrRunId; state.model = data.model;
+        state.ocrRequestId = '';
         openReview(data.receipt, data.lowConfidenceFields || [], data.validation, false);
         if (data.duplicateCandidates && data.duplicateCandidates.length) showValidation({ warnings: [{ message: 'พบรายการเดิมที่คล้ายกัน โปรดตรวจสอบก่อนบันทึก' }] });
         return;
       } catch (error) {
         lastError = error;
-        if (!['REQUEST_TIMEOUT', 'NETWORK_ERROR', 'INVALID_RESPONSE'].includes(error.code)) throw error;
+        if (!['REQUEST_TIMEOUT', 'NETWORK_ERROR', 'INVALID_RESPONSE'].includes(error.code)) {
+          state.ocrRequestId = '';
+          throw error;
+        }
         if (attempt === maxAttempts - 1) throw error;
         await new Promise(resolve => setTimeout(resolve, 3000));
       }
     }
     if (lastError) throw lastError;
+    throw appError('OCR_STILL_PROCESSING', 'ระบบยังประมวลผลภาพอยู่ คำขอเดิมยังถูกเก็บไว้ กดปุ่มอีกครั้งภายหลังเพื่อตรวจผลโดยไม่วิเคราะห์ซ้ำ');
   } catch (error) { handleError(error); }
   finally { setLoading(false); }
 }
 
 function openManualForm() {
-  state.source = 'MANUAL'; state.receipt = emptyReceipt(); state.ocrRunId = ''; state.model = '';
+  state.source = 'MANUAL'; state.receipt = emptyReceipt(); state.ocrRunId = ''; state.ocrRequestId = ''; state.model = '';
   openReview(state.receipt, [], { warnings: [] }, false);
 }
 
@@ -803,7 +820,7 @@ async function saveSale(event, duplicateOverride = false) {
 
 function resetCapture() {
   Object.assign(state, { originalDataUrl: '', previewDataUrl: '', rotation: 0, source: 'MANUAL', receipt: null,
-    ocrRunId: '', model: '', editingSaleId: '', expectedUpdatedAt: '' });
+    ocrRunId: '', ocrRequestId: '', model: '', editingSaleId: '', expectedUpdatedAt: '' });
   $('#preview-panel').classList.add('hidden'); $('#review-panel').classList.add('hidden'); $('#sale-form').reset();
   $('#deductions-list').innerHTML = ''; $('#labor-entries-list').innerHTML = ''; localStorage.removeItem('palmDraft');
 }
@@ -1225,7 +1242,21 @@ function formatThaiDate(value){if(!value)return 'ไม่ระบุวัน�
 function normalizeSearch(value){return String(value||'').trim().toLocaleLowerCase('th-TH').replace(/\s+/g,' ');}
 function escapeHtml(value){return String(value??'').replace(/[&<>"]/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[char]));}
 function cssEscape(value){return window.CSS?.escape?CSS.escape(value):String(value).replace(/[^a-zA-Z0-9_-]/g,'\\$&');}
-function readFileAsDataUrl(file){return new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=reject;reader.readAsDataURL(file);});}
+function imageMimeTypeForFile(file) {
+  const declared = String(file && file.type || '').trim().toLowerCase();
+  if (declared.indexOf('image/') === 0) return declared;
+  if (declared && declared !== 'application/octet-stream') return '';
+  const extension = String(file && file.name || '').split('.').pop().toLowerCase();
+  const byExtension = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp', heic: 'image/heic', heif: 'image/heif' };
+  return byExtension[extension] || 'image/jpeg';
+}
+function normalizeImageDataUrl(dataUrl, mimeType) {
+  const value = String(dataUrl || '');
+  const comma = value.indexOf(',');
+  if (comma < 0) throw new Error('Invalid image data URL');
+  return `data:${mimeType};base64,${value.slice(comma + 1)}`;
+}
+function readFileAsDataUrl(file){return new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=()=>reject(reader.error||new Error('อ่านไฟล์รูปไม่สำเร็จ'));reader.readAsDataURL(file);});}
 function loadImage(url){return new Promise((resolve,reject)=>{const image=new Image();image.onload=()=>resolve(image);image.onerror=reject;image.src=url;});}
 async function imagePayload(dataUrl){const [header,base64]=dataUrl.split(',');const bytes=Uint8Array.from(atob(base64),char=>char.charCodeAt(0));const digest=await crypto.subtle.digest('SHA-256',bytes);const sha256=Array.from(new Uint8Array(digest),byte=>byte.toString(16).padStart(2,'0')).join('');return{mimeType:(header.match(/data:([^;]+)/)||[])[1]||'image/jpeg',base64,sha256,bytes:bytes.length};}
 function getIdempotencyKey(){let key=localStorage.getItem('palmIdempotencyKey');if(!key){key=crypto.randomUUID?crypto.randomUUID():`${Date.now()}-${Math.random()}`;localStorage.setItem('palmIdempotencyKey',key);}return key;}

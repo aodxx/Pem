@@ -28,6 +28,9 @@ const app = fs.readFileSync('frontend/app.js', 'utf8');
 for (const reliabilityMarker of ['indexedDB.open', 'processPendingSaves', "api('sales.status'", 'idempotencyKey']) {
   if (!app.includes(reliabilityMarker)) throw new Error(`Missing reliable-save marker: ${reliabilityMarker}`);
 }
+for (const ocrReliabilityMarker of ['imageMimeTypeForFile(file)', 'normalizeImageDataUrl', 'OCR_STILL_PROCESSING', 'maxAttempts = 45', "state.ocrRequestId = requestId"]) {
+  if (!app.includes(ocrReliabilityMarker)) throw new Error(`Missing OCR reliability marker: ${ocrReliabilityMarker}`);
+}
 for (const visibilityMarker of ['history-count', 'clear-filters']) {
   if (!html.includes(visibilityMarker)) throw new Error(`Missing record-visibility marker: ${visibilityMarker}`);
 }
