@@ -12,7 +12,7 @@ PALM LEDGER รองรับ 2 รูปแบบใน Repository เดี�
 - `appsscript.json` — timezone, runtime และ OAuth scopes
 - `.clasp.json.example` — ตัวอย่างสำหรับผู้พัฒนาที่ต้องการใช้ Clasp (ห้าม commit `.clasp.json` จริง)
 
-Backend production ปัจจุบันคือ `1.3.0` ส่วน Multi-owner Template installer คือ `1.0.0`
+Backend source รุ่นล่าสุดคือ `1.3.1` ส่วน Multi-owner Template installer คือ `1.0.0` การเผยแพร่ Apps Script ต้องอัปเดต deployment แยกจาก GitHub Pages
 
 ## อัปเกรด Owner เดิม
 

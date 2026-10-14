@@ -631,7 +631,7 @@ async function renderImage(dataUrl, rotation) {
   const swap = rotation === 90 || rotation === 270;
   const sourceWidth = swap ? image.height : image.width;
   const sourceHeight = swap ? image.width : image.height;
-  const scale = Math.min(1, 1600 / Math.max(sourceWidth, sourceHeight));
+  const scale = Math.min(1, 2400 / Math.max(sourceWidth, sourceHeight));
   const width = Math.max(1, Math.round(sourceWidth * scale));
   const height = Math.max(1, Math.round(sourceHeight * scale));
   const canvas = document.createElement('canvas'); canvas.width = width; canvas.height = height;
@@ -639,7 +639,44 @@ async function renderImage(dataUrl, rotation) {
   context.translate(width / 2, height / 2); context.rotate(rotation * Math.PI / 180);
   const drawWidth = image.width * scale; const drawHeight = image.height * scale;
   context.drawImage(image, -drawWidth / 2, -drawHeight / 2, drawWidth, drawHeight);
-  return canvas.toDataURL('image/jpeg', .8);
+  return canvas.toDataURL('image/jpeg', .9);
+}
+
+async function enhanceReceiptImage(dataUrl) {
+  const image = await loadImage(dataUrl);
+  const scale = Math.min(1, 2000 / Math.max(image.width, image.height));
+  const width = Math.max(1, Math.round(image.width * scale));
+  const height = Math.max(1, Math.round(image.height * scale));
+  const canvas = document.createElement('canvas'); canvas.width = width; canvas.height = height;
+  const context = canvas.getContext('2d', { willReadFrequently: true });
+  context.drawImage(image, 0, 0, width, height);
+  const frame = context.getImageData(0, 0, width, height);
+  const pixels = frame.data;
+  const histogram = new Uint32Array(256);
+  const total = width * height;
+  for (let i = 0; i < pixels.length; i += 4) {
+    const gray = Math.round(.299 * pixels[i] + .587 * pixels[i + 1] + .114 * pixels[i + 2]);
+    histogram[gray] += 1;
+  }
+  const percentile = fraction => {
+    const target = Math.floor(total * fraction);
+    let count = 0;
+    for (let value = 0; value < histogram.length; value += 1) {
+      count += histogram[value];
+      if (count >= target) return value;
+    }
+    return 255;
+  };
+  const low = percentile(.015);
+  const high = Math.max(low + 24, percentile(.99));
+  const span = high - low;
+  for (let i = 0; i < pixels.length; i += 4) {
+    const gray = .299 * pixels[i] + .587 * pixels[i + 1] + .114 * pixels[i + 2];
+    const normalized = Math.max(0, Math.min(255, Math.round((gray - low) * 255 / span)));
+    pixels[i] = normalized; pixels[i + 1] = normalized; pixels[i + 2] = normalized;
+  }
+  context.putImageData(frame, 0, 0);
+  return canvas.toDataURL('image/jpeg', .88);
 }
 
 async function analyzeImage() {
@@ -650,7 +687,13 @@ async function analyzeImage() {
   setLoading(true, 'กำลังส่งบิลให้ AI อ่าน…');
   try {
     const image = await imagePayload(state.previewDataUrl);
-    const payload = { image, source: state.source, schemaVersion: '1.0.0' };
+    let imageAlternates = [];
+    try {
+      imageAlternates = [await imagePayload(await enhanceReceiptImage(state.previewDataUrl))];
+    } catch (enhancementError) {
+      console.warn('Receipt contrast enhancement skipped; sending original image only', enhancementError);
+    }
+    const payload = { image, imageAlternates, source: state.source, schemaVersion: '1.0.0' };
     const maxAttempts = 45;
     let lastError = null;
     for (let attempt = 0; attempt < maxAttempts; attempt += 1) {

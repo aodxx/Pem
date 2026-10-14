@@ -8,7 +8,7 @@
 
 สาเหตุหลักที่ยืนยันได้คือ **Gemini ปฏิเสธคำขอชั่วคราวเพราะระบบมีความต้องการสูง** ร่วมกับ backend ไม่มี retry; นอกจากนี้ยังพบ idempotency ฝั่ง OCR ไม่ครอบคลุมสถานะ `SUCCESS`/`LOW_CONFIDENCE` และตัวเลือกไฟล์ฝั่งมือถือไม่รองรับกรณี MIME ว่างพร้อมไม่มี error handling ที่เพียงพอ
 
-มีการแก้ใน working copy เป็น release `2.6.5` พร้อม regression tests แล้ว แต่ **ยังไม่ได้ commit, push หรือ deploy** จึงยังไม่มีผลกับเว็บหรือ Apps Script ที่ใช้งานจริง
+การแก้รอบแรกเป็น release `2.6.5` ถูก push เป็น commit `ae1adf7`; หน้าเว็บและ Apps Script รุ่น `1.3.0` ถูก deploy แล้ว อย่างไรก็ตาม Logs หลัง deploy ยังพบ Gemini HTTP 503 สองครั้ง จึงมี hardening รอบสองเป็น frontend `2.6.6` และ backend `1.3.1` ใน working copy ซึ่งยังไม่ได้ publish
 
 ## หลักฐานจากชีต
 
@@ -52,12 +52,25 @@
 - Gemini ยัง unavailable หลัง retry ครบ แล้วคืน `GEMINI_UNAVAILABLE`
 - lease ที่ยังใหม่ไม่ถูกหมดอายุก่อนเวลา
 
+## ผลตรวจหลัง deploy รุ่นแรก
+
+หลังผู้ใช้ deploy backend และ frontend รุ่น `2.6.5` พบคำขอ OCR เวลา 21:37:53 และ 21:44:37 วันที่ 14 ตุลาคม 2026 ทั้งคู่สร้างแถว `PROCESSING` แล้วจบเป็น `FAILED / GEMINI_UNAVAILABLE` หลังประมาณ 10–11 วินาที ข้อความ `Logs` ระบุ HTTP 503 high demand จากโมเดล `gemini-3.6-flash` จึงยืนยันว่าภาพผ่านถึง Apps Script แล้ว แต่โมเดลหลักไม่ตอบ แม้มี retry แบบเดิม
+
+## Hardening รอบสองใน working copy
+
+- Backend source `1.3.1` ลองโมเดลหลักแบบจำกัด 4 attempts ด้วย backoff 1/2/4 วินาทีและ jitter แล้ว fallback ไป `gemini-3.8-flash` และ `gemini-3.5-flash-lite`; เมื่อสำเร็จจะบันทึกชื่อโมเดลที่ตอบจริงใน `OCRRuns` และ response
+- Frontend/PWA `2.6.6` ยกระดับภาพสีต้นฉบับที่ส่ง OCR จาก 1600 เป็น 2400px และเพิ่มภาพขาวดำที่ปรับ contrast เป็นภาพสำรอง โดยบันทึกเฉพาะภาพสีต้นฉบับเป็นภาพใบเสร็จ
+- ปรับ prompt ให้ Gemini อ่านภาพที่หมุน/เอียง ยับ พับ ขาด สกปรก ซีด มีเงาหรือแสงสะท้อน พร้อมส่ง confidence/ปัญหาภาพ และห้ามเดาตัวเลข
+- เพิ่ม regression tests สำหรับโมเดลสำรอง การส่งภาพสองแบบ และการบันทึกโมเดลที่ตอบจริง
+
+โมเดล fallback เป็นชื่อที่ Google ระบุว่า stable และรองรับภาพ/structured output แต่ยังต้องตรวจการเข้าถึงด้วย API key จริงหลัง deploy ก่อนยืนยันผล production
+
 ## ขั้นตอนให้มีผลบนระบบจริง
 
-การเปลี่ยนแปลงยังอยู่ใน local clone `/home/ubuntu/Pem` บน branch `main` และยังไม่ได้ commit/push/deploy
+การ hardening รอบสองอยู่ใน local clone `/home/ubuntu/Pem` บน branch `main`; ยังไม่ได้ commit/push/deploy และไม่มีการเขียนข้อมูลลง Google Sheet
 
-1. ทบทวน diff แล้ว commit/push ไป `main` — GitHub Pages workflow ของโปรเจกต์ตั้งให้ทำงานเมื่อมี push ที่ตรงกับ path ที่แก้ และ Service Worker จะใช้ cache key `2.6.5`
-2. อัปเดต Apps Script `apps-script/Code.gs` ในโปรเจกต์ Apps Script และ **อัปเดต deployment เดิมเป็นเวอร์ชันใหม่** โดยคง Web App URL/สิทธิ์เดิม; การแก้ GitHub อย่างเดียวไม่เปลี่ยนโค้ด backend ที่ deploy อยู่
-3. หลัง deploy ให้ทดลองถ่าย/เลือกภาพบน Android จริง 1–2 ใบ และตรวจ Logs/OCRRuns ว่า 503/429 ถูก retry, requestId เดิมคืนผลเดิม และไม่มี PROCESSING ค้าง
+1. หลังทบทวนและอนุมัติ diff ให้ push frontend `2.6.6` ไป `main`; Service Worker ใช้ cache key `palm-ledger-v2.6.6`
+2. อัปเดต Apps Script `apps-script/Code.gs` รุ่น `1.3.1` ในโปรเจกต์เดิมและอัปเดต deployment เดิมเป็น New version โดยคง Web App URL/สิทธิ์เดิม
+3. ตรวจ health ว่าแสดง backend `1.3.1`; ทดลองภาพจริงบน Android และตรวจ Logs/OCRRuns ว่าระบุโมเดลที่ตอบจริงและไม่ค้าง
 
-ไม่มีการ push, commit, deploy หรือเขียนข้อมูลลง Google Sheet ในการตรวจครั้งนี้
+ไม่มีการ commit/push/deploy hardening รอบสอง และไม่มีการเขียนข้อมูลลง Google Sheet ในการตรวจ/ทดสอบรอบนี้

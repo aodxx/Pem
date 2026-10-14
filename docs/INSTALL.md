@@ -1,6 +1,6 @@
 # PALM LEDGER — ติดตั้ง Production
 
-## Backend 1.3.0
+## Backend 1.3.1
 
 1. เปิด Apps Script Project เดิม
 2. สำรองโค้ดเดิม

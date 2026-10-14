@@ -3,8 +3,8 @@
 เว็บแอปมือถือสำหรับอ่านใบชั่งขายปาล์มด้วย Gemini ตรวจข้อมูลก่อนบันทึก และจัดเก็บประวัติการขาย ค่าแรง รูปใบชั่ง และรายงานไว้ใน Google Sheets/Drive
 
 - แอปที่ใช้งานจริง: <https://aodxx.github.io/Pem/>
-- Frontend/PWA: `2.6.5`
-- Apps Script Backend: `1.3.0`
+- Frontend/PWA: `2.6.6`
+- Apps Script Backend: `1.3.1`
 - API: `v1`
 
 ## เริ่มพัฒนาใน 3 คำสั่ง

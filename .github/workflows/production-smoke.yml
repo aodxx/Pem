@@ -22,15 +22,15 @@ jobs:
           curl --fail --silent --show-error --retry 5 --retry-delay 3 https://aodxx.github.io/Pem/contrast-fix.css -o /tmp/contrast-fix.css
           curl --fail --silent --show-error --retry 5 --retry-delay 3 https://aodxx.github.io/Pem/developer-credit.css -o /tmp/developer-credit.css
           curl --fail --silent --show-error --retry 5 --retry-delay 3 https://aodxx.github.io/Pem/sw.js -o /tmp/sw.js
-          grep -F "version: '2.6.5'" /tmp/config.js
-          grep -F "const CACHE = 'palm-ledger-v2.6.5';" /tmp/sw.js
+          grep -F "version: '2.6.6'" /tmp/config.js
+          grep -F "const CACHE = 'palm-ledger-v2.6.6';" /tmp/sw.js
           grep -F 'Developed by <b>aod</b>' /tmp/config.js
           grep -F 'https://www.facebook.com/share/1AWvhjdr44/' /tmp/config.js
           grep -F 'name="timeIn" type="time" step="1"' /tmp/index.html
           grep -F 'name="timeOut" type="time" step="1"' /tmp/index.html
           grep -F 'PALM LEDGER 2.6.3' /tmp/contrast-fix.css
           grep -F 'color: #496158 !important;' /tmp/contrast-fix.css
-          grep -F 'PALM LEDGER 2.6.5' /tmp/developer-credit.css
+          grep -F 'PALM LEDGER 2.6.6' /tmp/developer-credit.css
       - name: Check production backend health
         run: |
           set -euo pipefail
@@ -63,7 +63,7 @@ jobs:
           const data = response.data || {};
           if (response.ok !== true) fail('Production backend reported ok=false');
           if (data.service !== 'palm-yield-ledger-api') fail(`Unexpected backend service: ${data.service || 'missing'}`);
-          if (data.version !== '1.3.0') fail(`Unexpected backend version: ${data.version || 'missing'}`);
+          if (data.version !== '1.3.1') fail(`Unexpected backend version: ${data.version || 'missing'}`);
           if (data.status !== 'ready') fail(`Production backend is not ready: ${data.status || 'missing'}`);
 
           console.log(JSON.stringify({

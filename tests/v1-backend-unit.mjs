@@ -104,16 +104,23 @@ if (context.isOcrProcessingExpired_({ CreatedAt: new Date(nowMs - 60 * 1000).toI
 let staleRowUpdate = null;
 const recoveryRows = [];
 let recoveryGeminiCalls = 0;
+let recoveryAlternateCount = 0;
 context.findLatestOcrRunByRequestId_ = () => ({
   OCRRunID: 'OCR_OLD', RequestID: 'REQ_STALE', Status: 'PROCESSING', CreatedAt: new Date(nowMs - 8 * 60 * 1000).toISOString(), __rowNumber: 2
 });
 context.updateObjectRow_ = (sheet, row, record) => { staleRowUpdate = { sheet, row, record }; };
 context.appendObjectRow_ = (sheet, record) => { recoveryRows.push({ sheet, record }); };
 context.createId_ = () => 'OCR_NEW';
-context.callGeminiReceipt_ = () => { recoveryGeminiCalls += 1; return normalized; };
-const recovered = context.analyzeReceipt_({ image: { mimeType: 'image/jpeg', base64: 'YWJj', sha256: 'abc' } }, 'REQ_STALE');
+context.callGeminiReceipt_ = (image, model, schemaVersion, alternates) => {
+  recoveryGeminiCalls += 1; recoveryAlternateCount = alternates.length;
+  return { receipt: normalized, model: 'gemini-fallback-test' };
+};
+const recovered = context.analyzeReceipt_({
+  image: { mimeType: 'image/jpeg', base64: 'YWJj', sha256: 'abc' },
+  imageAlternates: [{ mimeType: 'image/jpeg', base64: 'ZGVm' }]
+}, 'REQ_STALE');
 if (!staleRowUpdate || staleRowUpdate.record.Status !== 'STALE' || staleRowUpdate.record.ErrorCode !== 'PROCESSING_TIMEOUT') throw new Error('Stale OCR row was not marked for recovery');
-if (recoveryRows[0].record.Status !== 'PROCESSING' || recoveryRows[1].record.Status !== 'SUCCESS' || recoveryGeminiCalls !== 1 || recovered.state !== 'COMPLETED') throw new Error('Stale OCR request was not restarted and completed');
+if (recoveryRows[0].record.Status !== 'PROCESSING' || recoveryRows[1].record.Status !== 'SUCCESS' || recoveryRows[1].record.Model !== 'gemini-fallback-test' || recoveryGeminiCalls !== 1 || recoveryAlternateCount !== 1 || recovered.state !== 'COMPLETED' || recovered.model !== 'gemini-fallback-test') throw new Error('Stale OCR request was not restarted with enhanced image and actual model recorded');
 
 context.callGeminiReceipt_ = originalGeminiReceiptCall;
 context.PropertiesService = { getScriptProperties: () => ({ getProperty: () => 'test-key' }) };
@@ -129,7 +136,30 @@ context.UrlFetchApp = { fetch: () => {
   return { getResponseCode: () => status, getContentText: () => content };
 } };
 const retriedResult = context.callGeminiReceipt_({ mimeType: 'image/jpeg', base64: 'YWJj' }, 'gemini-test', '1.0.0');
-if (fetchAttempts !== 2 || retriedResult.overallConfidence !== .2) throw new Error('Gemini transient 503 was not retried successfully');
+if (fetchAttempts !== 2 || retriedResult.receipt.overallConfidence !== .2 || retriedResult.model !== 'gemini-test') throw new Error('Gemini transient 503 was not retried successfully');
+
+fetchAttempts = 0;
+const requestedModels = [];
+let sentBody = null;
+context.UrlFetchApp.fetch = (url, options) => {
+  fetchAttempts += 1;
+  sentBody = JSON.parse(options.payload);
+  const requestedModel = decodeURIComponent(url.match(/\/models\/([^:]+)/)[1]);
+  requestedModels.push(requestedModel);
+  const status = requestedModel === 'gemini-test' ? 503 : 200;
+  const content = status === 503
+    ? JSON.stringify({ error: { message: 'high demand' } })
+    : JSON.stringify({ candidates: [{ content: { parts: [{ text: extractedText }] } }] });
+  return { getResponseCode: () => status, getContentText: () => content };
+};
+const fallbackResult = context.callGeminiReceipt_(
+  { mimeType: 'image/jpeg', base64: 'YWJj' }, 'gemini-test', '1.0.0',
+  [{ mimeType: 'image/jpeg', base64: 'ZGVm' }]
+);
+if (fetchAttempts !== 5 || fallbackResult.model !== 'gemini-3.8-flash' || requestedModels.slice(0, 4).some(value => value !== 'gemini-test') || requestedModels[4] !== 'gemini-3.8-flash') throw new Error('Gemini model fallback did not follow the configured order');
+const imagePartCount = sentBody.contents[0].parts.filter(part => part.inlineData).length;
+if (!fallbackResult.receipt || fallbackResult.attempts !== 5 || imagePartCount !== 2) throw new Error('Fallback response metadata or dual-image OCR payload missing');
+
 fetchAttempts = 0;
 context.UrlFetchApp.fetch = () => {
   fetchAttempts += 1;
@@ -138,7 +168,7 @@ context.UrlFetchApp.fetch = () => {
 let unavailableCode = '';
 try { context.callGeminiReceipt_({ mimeType: 'image/jpeg', base64: 'YWJj' }, 'gemini-test', '1.0.0'); }
 catch (error) { unavailableCode = error.code; }
-if (fetchAttempts !== 3 || unavailableCode !== 'GEMINI_UNAVAILABLE') throw new Error('Exhausted Gemini retries were not reported as temporary unavailability');
+if (fetchAttempts !== 6 || unavailableCode !== 'GEMINI_UNAVAILABLE') throw new Error('Exhausted primary and fallback model attempts were not reported as temporary unavailability');
 
 context.getIdempotentSale_ = key => key === 'saved-key' ? { SaleID: 'SALE_SAVED', NetAmount: 12500 } : null;
 const savedStatus = context.getSaleSaveStatus_('saved-key');

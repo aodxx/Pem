@@ -1,6 +1,6 @@
 # PROGRESS
 
-อัปเดตล่าสุด: 2026-08-21
+อัปเดตล่าสุด: 2026-10-14
 
 ## สถานะ
 
@@ -28,12 +28,20 @@
 
 ## Current production release
 
-- Frontend/PWA: `2.6.5`
-- Backend: `1.3.0`
+- Frontend/PWA ที่ deploy แล้ว: `2.6.5`
+- Backend ที่ deploy แล้ว: `1.3.0`
 - API: `v1`
 - Gemini schema: `1.0.0`
 - Service Worker cache: `palm-ledger-v2.6.5`
-- OCR reliability: idempotent result replay, stale PROCESSING recovery, Gemini transient retries, and mobile image MIME fallback
+- หลัง deploy มี OCR requests สองครั้งที่จบด้วย `GEMINI_UNAVAILABLE` จาก HTTP 503 high demand (21:38 และ 21:44 เวลาไทย)
+
+## OCR hardening candidate — pending production deployment
+
+- Frontend/PWA source: `2.6.6`; backend source: `1.3.1`
+- เพิ่ม retry แบบ exponential backoff พร้อม jitter และ fallback `gemini-3.8-flash` / `gemini-3.5-flash-lite` หลังโมเดลหลักล้มชั่วคราว
+- เพิ่มภาพขาวดำปรับ contrast สำหรับ OCR ควบคู่ภาพสีต้นฉบับ และยกความละเอียดส่ง OCR สูงสุดเป็น 2400px
+- ปรับ prompt ให้รับมือภาพหมุน/เอียง กระดาษยับ ซีด สกปรก มีเงา/แสงสะท้อน และให้ใช้สมการเพื่อตรวจทานโดยไม่เดาตัวเลข
+- ยังต้อง deploy GitHub Pages และ Apps Script แยกกัน แล้วทดสอบ API key/model fallback บนบัญชีจริงก่อนเรียกว่า live verified
 
 ## UI polish
 
@@ -85,7 +93,7 @@ Backend backup helpers require one Apps Script update/deploy/setup before they b
 
 Only one user-device action remains before marking the project `Production Ready — Closed`:
 
-1. Open the current deployed PWA (`2.6.5`, which includes the time input and OCR reliability fixes) on the real mobile device.
+1. After publishing the pending hardening candidate, open the deployed PWA (`2.6.6`) on the real mobile device.
 2. Scan a receipt containing seconds in TimeIn/TimeOut.
 3. Save the sale normally without manually rounding the times.
 4. Verify the new Sales row stores the same `HH:MM:SS` values shown on the receipt.

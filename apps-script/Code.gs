@@ -1,5 +1,5 @@
 /**
- * Palm Yield Ledger Backend v1.3.0
+ * Palm Yield Ledger Backend v1.3.1
  * Apps Script Project: 1PzG5lE7bxpSMSyO_BOBx9DGuFTZMTw_7mBV7o12c6HoWMKqzLlmwaGaz
  * รวมจากไฟล์ Phase 1 ใน aodxx/Pem เพื่อให้คัดลอกวางใน Code.gs ได้ครั้งเดียว
  */
@@ -8,7 +8,7 @@
 const APP_CONFIG = Object.freeze({
   appName: 'Palm Yield Ledger',
   serviceName: 'palm-yield-ledger-api',
-  version: '1.3.0',
+  version: '1.3.1',
   apiVersion: 'v1',
   timeZone: 'Asia/Bangkok',
   spreadsheetId: '1S5WtdhsVUOQ5APZ_EiBKSZBTeyi6VKnVLeaGbWPBAPc',
@@ -661,6 +661,9 @@ function analyzeReceipt_(payload, requestId) {
   const model = String(settings.GEMINI_MODEL || 'gemini-3.6-flash');
   const schemaVersion = String(settings.GEMINI_SCHEMA_VERSION || '1.0.0');
   const image = validateImage_(payload.image || {});
+  const alternateImages = Array.isArray(payload.imageAlternates)
+    ? payload.imageAlternates.slice(0, 1).map(function (item) { return validateImage_(item); }) : [];
+  const fallbackModels = getGeminiFallbackModels_(settings, model);
   let ocrRunId;
   const lock = LockService.getScriptLock();
   lock.waitLock(10000);
@@ -706,8 +709,9 @@ function analyzeReceipt_(payload, requestId) {
     lock.releaseLock();
   }
   try {
-    const extracted = callGeminiReceipt_(image, model, schemaVersion);
-    const normalized = normalizeReceipt_(extracted);
+    const generation = callGeminiReceipt_(image, model, schemaVersion, alternateImages, fallbackModels);
+    const modelUsed = generation.model || model;
+    const normalized = normalizeReceipt_(generation.receipt);
     const validation = validateSaleDraft_(normalized, false);
     const lowConfidenceFields = getLowConfidenceFields_(normalized, Number(settings.LOW_CONFIDENCE_THRESHOLD || 0.75));
     if (validation.warnings.some(function (item) { return item.code === 'DATE_OUTLIER'; }) && lowConfidenceFields.indexOf('saleDate') < 0) {
@@ -717,7 +721,7 @@ function analyzeReceipt_(payload, requestId) {
       OCRRunID: ocrRunId,
       RequestID: requestId,
       ImageSha256: payload.image && payload.image.sha256 || sha256Hex_(image.base64),
-      Model: model,
+      Model: modelUsed,
       SchemaVersion: schemaVersion,
       Status: normalized.overallConfidence < Number(settings.LOW_CONFIDENCE_THRESHOLD || 0.75) ? 'LOW_CONFIDENCE' : 'SUCCESS',
       OverallConfidence: normalized.overallConfidence,
@@ -732,7 +736,7 @@ function analyzeReceipt_(payload, requestId) {
       state: 'COMPLETED',
       ocrRunId: ocrRunId,
       requestId: requestId,
-      model: model,
+      model: modelUsed,
       schemaVersion: schemaVersion,
       receipt: normalized,
       validation: validation,
@@ -748,7 +752,8 @@ function analyzeReceipt_(payload, requestId) {
         OCRRunID: ocrRunId,
         RequestID: requestId,
         ImageSha256: payload.image && payload.image.sha256 || '',
-        Model: model,
+        Model: error instanceof AppError && error.details && Array.isArray(error.details.modelsTried)
+          ? error.details.modelsTried.join(' -> ') : model,
         SchemaVersion: schemaVersion,
         Status: 'FAILED',
         OverallConfidence: 0,
@@ -767,15 +772,30 @@ function analyzeReceipt_(payload, requestId) {
   }
 }
 
-function callGeminiReceipt_(image, model, schemaVersion) {
+function getGeminiFallbackModels_(settings, primaryModel) {
+  const configured = String(settings && settings.GEMINI_FALLBACK_MODEL || '').split(/[,;\n]/);
+  const candidates = configured.concat(['gemini-3.8-flash', 'gemini-3.5-flash-lite']);
+  const seen = {};
+  return candidates.map(function (item) { return String(item || '').trim(); }).filter(function (item) {
+    if (!item || item === primaryModel || seen[item]) return false;
+    seen[item] = true;
+    return true;
+  });
+}
+
+function callGeminiReceipt_(image, model, schemaVersion, alternateImages, fallbackModels) {
   const apiKey = PropertiesService.getScriptProperties().getProperty(SCRIPT_PROPERTY_KEYS.geminiApiKey);
   if (!apiKey) throw new AppError('NOT_CONFIGURED', 'ไม่พบ GEMINI_API_KEY');
-  const url = 'https://generativelanguage.googleapis.com/v1beta/models/' +
-    encodeURIComponent(model) + ':generateContent?key=' + encodeURIComponent(apiKey);
+  const models = [String(model || 'gemini-3.6-flash')].concat(fallbackModels || getGeminiFallbackModels_({}, model));
+  const uniqueModels = models.filter(function (item, index) { return item && models.indexOf(item) === index; });
   const prompt = [
     'คุณคือระบบอ่านใบชั่งขายผลปาล์มน้ำมันของประเทศไทย',
-    'อ่านข้อความพิมพ์ ลายมือ และตัวเลขจากภาพอย่างระมัดระวัง',
+    'ภาพอาจหมุน 90/180/270 องศา เอียงเล็กน้อย กระดาษยับ พับ ขาด สกปรก ซีด มีเงา แสงสะท้อน หรือมีลายมือ/ตราประทับทับข้อความ ให้ปรับทิศทางในใจและอ่านข้อความทั้งภาพก่อนสรุป',
+    'ภาพที่สอง (ถ้ามี) เป็นภาพเดิมที่ปรับเป็นขาวดำและเพิ่ม contrast เพื่อช่วยอ่านข้อความ ให้เทียบกับภาพสีต้นฉบับ ไม่ใช่เอกสารคนละใบ; ใช้ภาพสีอ่านลายมือหรือสีหมึก',
+    'อ่านข้อความพิมพ์ ลายมือ และตัวเลขจากภาพอย่างระมัดระวัง โดยให้ความสำคัญกับตัวเลขที่จัดแนวในคอลัมน์และป้ายกำกับภาษาไทย',
     'ห้ามเดาตัวเลข หากอ่านไม่ได้ให้คืน null และเพิ่มชื่อ field ใน missingFields',
+    'ใช้สมการน้ำหนักและยอดเงินเพื่อตรวจความสอดคล้องเท่านั้น ห้ามเปลี่ยนตัวเลขที่อ่านได้หรือเดาตัวเลขเพื่อบังคับให้สมการลงตัว',
+    'ระบุปัญหาภาพที่พบ เช่น rotated, skewed, folded, stained, faded, shadow, glare หรือ partially-obscured ใน imageIssues และลด fieldConfidence ของค่าที่ไม่ชัด',
     'วันที่ปัจจุบันคือ ' + Utilities.formatDate(new Date(), APP_CONFIG.timeZone, 'yyyy-MM-dd'),
     'วันที่ใช้ ค.ศ. รูปแบบ YYYY-MM-DD; หากบนเอกสารเป็น พ.ศ. ให้ลบ 543',
     'ถ้าตัวเลขปีเบลอหรืออ่านไม่ชัด ห้ามเดาปี ให้คืน saleDate เป็น null และระบุ saleDate ใน missingFields',
@@ -784,11 +804,15 @@ function callGeminiReceipt_(image, model, schemaVersion) {
     'netWeightKg ควรเท่ากับ grossWeightKg - tareWeightKg เมื่อเอกสารรองรับ',
     'ตอบ JSON ตาม schema เท่านั้น schemaVersion=' + schemaVersion
   ].join('\n');
+  const parts = [{ text: prompt }, { text: 'ภาพที่ 1: ภาพสีต้นฉบับที่ผู้ใช้เลือก' }, {
+    inlineData: { mimeType: image.mimeType, data: image.base64 }
+  }];
+  (Array.isArray(alternateImages) ? alternateImages.slice(0, 1) : []).forEach(function (alternate) {
+    parts.push({ text: 'ภาพที่ 2: ภาพใบเดิมที่ปรับ grayscale/contrast เพื่อให้อ่านตัวพิมพ์จางได้ง่ายขึ้น' });
+    parts.push({ inlineData: { mimeType: alternate.mimeType, data: alternate.base64 } });
+  });
   const body = {
-    contents: [{ role: 'user', parts: [
-      { text: prompt },
-      { inlineData: { mimeType: image.mimeType, data: image.base64 } }
-    ] }],
+    contents: [{ role: 'user', parts: parts }],
     generationConfig: {
       temperature: 0,
       maxOutputTokens: 4096,
@@ -796,39 +820,72 @@ function callGeminiReceipt_(image, model, schemaVersion) {
       responseJsonSchema: getGeminiReceiptJsonSchema_()
     }
   };
-  let response = null;
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    try {
-      response = UrlFetchApp.fetch(url, {
-        method: 'post', contentType: 'application/json', payload: JSON.stringify(body), muteHttpExceptions: true
-      });
-    } catch (error) {
-      if (attempt >= 2) throw new AppError('GEMINI_NETWORK_ERROR', 'เชื่อมต่อ Gemini ไม่สำเร็จหลังลองซ้ำ', { message: error && error.message });
-      Utilities.sleep(1000 * Math.pow(2, attempt));
-      continue;
+  let lastFailure = null;
+  let totalAttempts = 0;
+  const triedModels = [];
+  for (let modelIndex = 0; modelIndex < uniqueModels.length; modelIndex += 1) {
+    const modelName = uniqueModels[modelIndex];
+    triedModels.push(modelName);
+    const url = 'https://generativelanguage.googleapis.com/v1beta/models/' +
+      encodeURIComponent(modelName) + ':generateContent?key=' + encodeURIComponent(apiKey);
+    const maxAttempts = modelIndex === 0 ? 4 : 1;
+    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+      totalAttempts += 1;
+      let response;
+      try {
+        response = UrlFetchApp.fetch(url, {
+          method: 'post', contentType: 'application/json', payload: JSON.stringify(body), muteHttpExceptions: true
+        });
+      } catch (error) {
+        lastFailure = new AppError('GEMINI_NETWORK_ERROR', 'เชื่อมต่อ Gemini ไม่สำเร็จ', { model: modelName, message: error && error.message });
+        if (attempt < maxAttempts - 1) {
+          Utilities.sleep(Math.min(8000, 1000 * Math.pow(2, attempt)) + Math.floor(Math.random() * 500));
+          continue;
+        }
+        break;
+      }
+      const status = response.getResponseCode();
+      if (status >= 200 && status < 300) {
+        let data;
+        try { data = JSON.parse(response.getContentText() || '{}'); } catch (ignore) { data = {}; }
+        const responseParts = data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts || [];
+        const jsonText = responseParts.map(function (part) { return part.text || ''; }).join('').trim();
+        try {
+          if (!jsonText) throw new Error('Gemini ไม่ได้ส่งข้อมูล JSON กลับมา');
+          const receipt = JSON.parse(jsonText.replace(/^```json\s*/i, '').replace(/```$/, '').trim());
+          return { receipt: receipt, model: modelName, attempts: totalAttempts };
+        } catch (error) {
+          lastFailure = new AppError('OCR_FAILED', 'Gemini ส่งผล OCR ที่อ่านไม่ได้', { model: modelName, message: error && error.message });
+          break;
+        }
+      }
+      let failureData;
+      try { failureData = JSON.parse(response.getContentText() || '{}'); } catch (ignore) { failureData = {}; }
+      const failureMessage = failureData && failureData.error && failureData.error.message || 'HTTP ' + status;
+      const retryable = [408, 429, 500, 502, 503, 504].indexOf(status) >= 0;
+      if (retryable) {
+        const failureCode = status === 429 ? 'RATE_LIMITED' : 'GEMINI_UNAVAILABLE';
+        lastFailure = new AppError(failureCode, 'Gemini API HTTP ' + status + ': ' + failureMessage, { httpStatus: status, model: modelName });
+        if (attempt < maxAttempts - 1) {
+          Utilities.sleep(Math.min(8000, 1000 * Math.pow(2, attempt)) + Math.floor(Math.random() * 500));
+          continue;
+        }
+        break;
+      }
+      if (status === 404) {
+        lastFailure = new AppError('GEMINI_MODEL_UNAVAILABLE', 'ไม่พบ Gemini model ' + modelName, { httpStatus: status, model: modelName });
+        break;
+      }
+      throw new AppError('GEMINI_API_ERROR', 'Gemini API HTTP ' + status + ': ' + failureMessage, { httpStatus: status, model: modelName });
     }
-    const status = response.getResponseCode();
-    if (status >= 200 && status < 300) break;
-    const retryable = [408, 429, 500, 502, 503, 504].indexOf(status) >= 0;
-    if (retryable && attempt < 2) {
-      Utilities.sleep(1000 * Math.pow(2, attempt));
-      continue;
-    }
-    let failureData;
-    try { failureData = JSON.parse(response.getContentText() || '{}'); } catch (ignore) { failureData = {}; }
-    const failureMessage = failureData && failureData.error && failureData.error.message || 'HTTP ' + status;
-    const failureCode = status === 429 ? 'RATE_LIMITED' : retryable ? 'GEMINI_UNAVAILABLE' : 'OCR_FAILED';
-    throw new AppError(failureCode, 'Gemini API HTTP ' + status + ': ' + failureMessage, { httpStatus: status });
   }
-  if (!response) throw new AppError('GEMINI_NETWORK_ERROR', 'เชื่อมต่อ Gemini ไม่สำเร็จ');
-  const status = response.getResponseCode();
-  let data;
-  try { data = JSON.parse(response.getContentText() || '{}'); } catch (ignore) { data = {}; }
-  const parts = data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts || [];
-  const jsonText = parts.map(function (part) { return part.text || ''; }).join('').trim();
-  if (!jsonText) throw new AppError('OCR_FAILED', 'Gemini ไม่ได้ส่งข้อมูล JSON กลับมา');
-  try { return JSON.parse(jsonText.replace(/^```json\s*/i, '').replace(/```$/, '').trim()); }
-  catch (error) { throw new AppError('OCR_FAILED', 'อ่าน JSON จาก Gemini ไม่สำเร็จ'); }
+  const lastCode = lastFailure && lastFailure.code;
+  const finalCode = lastCode === 'RATE_LIMITED' ? 'RATE_LIMITED' :
+    lastCode === 'GEMINI_NETWORK_ERROR' ? 'GEMINI_NETWORK_ERROR' :
+      lastCode === 'GEMINI_MODEL_UNAVAILABLE' ? 'GEMINI_MODEL_UNAVAILABLE' : 'GEMINI_UNAVAILABLE';
+  throw new AppError(finalCode,
+    'บริการ AI อ่านบิลยังไม่สำเร็จหลังลองโมเดลหลักและโมเดลสำรอง กรุณาลองใหม่อีกครั้ง ข้อมูลยังไม่ถูกบันทึกเป็นรายการขาย โมเดลที่ลอง: ' + triedModels.join(' -> '),
+    { modelsTried: triedModels, attempts: totalAttempts, lastError: lastFailure && lastFailure.message });
 }
 
 function getGeminiReceiptJsonSchema_() {

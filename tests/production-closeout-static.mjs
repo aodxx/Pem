@@ -16,9 +16,9 @@ function assert(condition, message) {
   if (!condition) throw new Error(message);
 }
 
-assert(pkg.version === '2.6.5', 'package.json version must be 2.6.5');
-assert(config.includes("version: '2.6.5'"), 'frontend config version must be 2.6.5');
-assert(sw.includes("const CACHE = 'palm-ledger-v2.6.5';"), 'service worker cache must be 2.6.5');
+assert(pkg.version === '2.6.6', 'package.json version must be 2.6.6');
+assert(config.includes("version: '2.6.6'"), 'frontend config version must be 2.6.6');
+assert(sw.includes("const CACHE = 'palm-ledger-v2.6.6';"), 'service worker cache must be 2.6.6');
 assert(sw.includes("'modern-polish.css'"), 'modern polish stylesheet must be cached offline');
 assert(sw.includes("'contrast-fix.css'"), 'contrast fix stylesheet must be cached offline');
 assert(sw.includes("'developer-credit.css'"), 'developer credit stylesheet must be cached offline');
@@ -30,7 +30,7 @@ assert(contrast.includes('--contrast-active-bg: #e9f8c7;'), 'active bottom nav m
 assert(index.includes('name="timeIn" type="time" step="1"'), 'timeIn must accept seconds');
 assert(index.includes('name="timeOut" type="time" step="1"'), 'timeOut must accept seconds');
 assert(config.includes('Developed by <b>aod</b>'), 'developer credit must be present');
-assert(developerCredit.includes('PALM LEDGER 2.6.5'), 'developer credit stylesheet must match release 2.6.5');
+assert(developerCredit.includes('PALM LEDGER 2.6.6'), 'developer credit stylesheet must match release 2.6.6');
 assert(config.includes('https://www.facebook.com/share/1AWvhjdr44/'), 'developer Facebook URL must be present');
 assert(developerCredit.includes('.developer-facebook'), 'developer Facebook control must be styled');
 
@@ -45,7 +45,7 @@ for (const required of [
   '--max-time 30',
   '--retry-all-errors',
   '[[ ! -s /tmp/health.json ]]',
-  "data.version !== '1.3.0'",
+  "data.version !== '1.3.1'",
   "data.status !== 'ready'",
 ]) {
   assert(productionSmoke.includes(required), `production smoke is missing: ${required}`);
