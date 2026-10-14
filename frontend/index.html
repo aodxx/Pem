@@ -43,6 +43,18 @@
         <button id="retry-pending" class="button secondary" type="button">ส่งอีกครั้ง</button>
       </div>
 
+      <section id="receipt-status-indicator" class="receipt-status-indicator hidden" data-state="idle" role="status" aria-live="polite" aria-atomic="true" aria-busy="false">
+        <div class="receipt-status-heading">
+          <span id="receipt-status-icon" class="receipt-status-icon" aria-hidden="true"></span>
+          <div><strong id="receipt-status-title">สถานะใบชั่ง</strong><p id="receipt-status-message"></p></div>
+        </div>
+        <ol id="receipt-status-steps" class="receipt-status-steps" aria-label="ขั้นตอนการส่งบิล">
+          <li data-receipt-step="image">รูปพร้อม</li><li data-receipt-step="ocr">อ่านบิล</li><li data-receipt-step="review">ตรวจข้อมูล</li><li data-receipt-step="save">บันทึก</li>
+        </ol>
+        <div id="receipt-status-progress" class="receipt-status-progress" role="progressbar" aria-label="ความคืบหน้าของบิล" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span id="receipt-status-progress-bar"></span></div>
+        <button id="receipt-status-action" class="button secondary hidden" type="button"></button>
+      </section>
+
       <div class="capture-zone">
         <label class="action-card primary camera-action">
           <input id="camera-input" type="file" accept="image/*" capture="environment" hidden>

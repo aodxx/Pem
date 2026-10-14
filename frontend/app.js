@@ -7,6 +7,7 @@ const state = {
   accessToken: localStorage.getItem('palmAccessToken') || '', originalDataUrl: '', previewDataUrl: '', rotation: 0,
   source: 'MANUAL', receipt: null, ocrRunId: '', ocrRequestId: '', model: '', editingSaleId: '', expectedUpdatedAt: '', installPrompt: null,
   syncInProgress: false, viewingSaleId: '', viewingSaleDetail: null, contractors: [], pendingContractorRow: null,
+  receiptStatus: 'idle', activeSaveQueueId: '',
   editingContractorId: '', contractorsLoaded: false,
   dashboardSeries: [], dashboardMetric: 'revenue', dashboardAllYears: false, dashboardYear: ''
 };
@@ -30,8 +31,17 @@ function init() {
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js').catch(() => {});
   initSaveQueue().then(async () => { await refreshQueueUI(); processPendingSaves(false); }).catch(() => {});
   if (state.accessToken) loadContractors().catch(() => {});
-  window.addEventListener('online', () => { setSyncStatus('ออนไลน์ — กำลังตรวจรายการรอส่ง'); processPendingSaves(false); });
-  window.addEventListener('offline', () => setSyncStatus('ออฟไลน์ — แบบร่างยังอยู่'));
+  window.addEventListener('online', () => {
+    setSyncStatus('ออนไลน์ — กำลังตรวจรายการรอส่ง');
+    if (state.activeSaveQueueId && state.receiptStatus === 'queued') setReceiptStatus('saving', 'กำลังส่งบิลเข้า Google Sheets', 'อินเทอร์เน็ตกลับมาแล้ว ระบบกำลังส่งรายการจากคิว', { step: 3 });
+    processPendingSaves(false);
+  });
+  window.addEventListener('offline', () => {
+    setSyncStatus('ออฟไลน์ — แบบร่างยังอยู่');
+    if (state.activeSaveQueueId && ['saving', 'queued'].includes(state.receiptStatus)) {
+      setReceiptStatus('queued', 'บิลยังอยู่ในคิวส่ง', 'ออฟไลน์อยู่ ข้อมูลเก็บไว้ในเครื่องและจะส่งเมื่ออินเทอร์เน็ตกลับมา', { step: 3 });
+    }
+  });
   document.addEventListener('visibilitychange', () => { if (document.hidden) hideAllSecrets(); });
 }
 
@@ -62,6 +72,83 @@ function bindCapture() {
   $('#analyze-button').addEventListener('click', analyzeImage);
   $('#manual-button').addEventListener('click', openManualForm);
   $('#cancel-review').addEventListener('click', resetCapture);
+  $('#receipt-status-action').addEventListener('click', handleReceiptStatusAction);
+}
+
+function setReceiptStatus(status, title, message, options = {}) {
+  const panel = $('#receipt-status-indicator');
+  const steps = $$('#receipt-status-steps [data-receipt-step]');
+  const step = Number.isInteger(options.step) ? options.step : 0;
+  const isError = Boolean(options.error);
+  state.receiptStatus = status;
+  panel.classList.remove('hidden');
+  panel.dataset.state = status;
+  panel.classList.toggle('is-error', isError);
+  panel.classList.toggle('is-success', status === 'saved');
+  panel.setAttribute('aria-live', isError ? 'assertive' : 'polite');
+  panel.setAttribute('aria-busy', ['uploading', 'processing', 'saving'].includes(status) ? 'true' : 'false');
+  $('#receipt-status-title').textContent = title;
+  $('#receipt-status-message').textContent = message;
+  const completed = status === 'saved' ? steps.length : Math.max(0, Math.min(steps.length, step));
+  const percent = status === 'saved' ? 100 : Math.round(completed / Math.max(steps.length, 1) * 100);
+  const progress = $('.receipt-status-progress');
+  progress.setAttribute('aria-valuenow', String(percent));
+  $('#receipt-status-progress-bar').style.width = `${percent}%`;
+  steps.forEach((item, index) => {
+    const done = status === 'saved' || index < completed;
+    const current = status !== 'saved' && index === step && !isError;
+    const failed = index === step && isError;
+    item.classList.toggle('is-complete', done);
+    item.classList.toggle('is-current', current);
+    item.classList.toggle('is-error', failed);
+    if (current) item.setAttribute('aria-current', 'step');
+    else item.removeAttribute('aria-current');
+    const label = item.textContent.trim();
+    item.setAttribute('aria-label', `${label} — ${done ? 'เสร็จแล้ว' : failed ? 'มีปัญหา' : current ? 'กำลังทำ' : 'ยังไม่เริ่ม'}`);
+  });
+  const action = $('#receipt-status-action');
+  action.classList.toggle('hidden', !options.action);
+  action.textContent = options.actionLabel || '';
+  action.dataset.action = options.action || '';
+  action.disabled = false;
+}
+
+function clearReceiptStatus() {
+  const panel = $('#receipt-status-indicator');
+  state.receiptStatus = 'idle';
+  panel.classList.add('hidden');
+  panel.dataset.state = 'idle';
+  panel.classList.remove('is-error', 'is-success');
+  panel.setAttribute('aria-live', 'polite');
+  panel.setAttribute('aria-busy', 'false');
+  $('#receipt-status-title').textContent = 'สถานะใบชั่ง';
+  $('#receipt-status-message').textContent = '';
+  $('.receipt-status-progress').setAttribute('aria-valuenow', '0');
+  $('#receipt-status-progress-bar').style.width = '0%';
+  const action = $('#receipt-status-action');
+  action.classList.add('hidden'); action.textContent = ''; action.dataset.action = ''; action.disabled = false;
+  $$('#receipt-status-steps [data-receipt-step]').forEach(item => {
+    item.classList.remove('is-complete', 'is-current', 'is-error');
+    item.removeAttribute('aria-current'); item.removeAttribute('aria-label');
+  });
+}
+
+function setReceiptAnalysisBusy(busy) {
+  ['camera-input', 'gallery-input', 'manual-button', 'analyze-button', 'rotate-left', 'rotate-right'].forEach(id => { $(`#${id}`).disabled = busy; });
+  $('.capture-zone').classList.toggle('is-busy', busy);
+}
+
+async function handleReceiptStatusAction() {
+  const action = $('#receipt-status-action');
+  const actionName = action.dataset.action;
+  if (actionName === 'retry-ocr') return analyzeImage();
+  if (actionName === 'retry-local-save') return $('#save-button').click();
+  if (actionName === 'open-settings') return showView('settings');
+  if (actionName === 'retry-sync') {
+    action.disabled = true;
+    try { await processPendingSaves(true); }
+    finally { action.disabled = false; }
+  }
 }
 
 function bindForm() {
@@ -615,19 +702,28 @@ async function selectImage(event, source) {
   const input = event.target;
   const file = input.files && input.files[0];
   if (!file) return;
+  state.activeSaveQueueId = '';
   try {
-    if (file.size > 14 * 1024 * 1024) return toast('รูปต้นฉบับใหญ่เกิน 14 MB กรุณาเลือกรูปอื่น');
+    if (file.size > 14 * 1024 * 1024) {
+      setReceiptStatus('error', 'ไฟล์รูปใหญ่เกินไป', 'เลือกรูปที่มีขนาดไม่เกิน 14 MB แล้วลองใหม่', { step: 0, error: true });
+      return toast('รูปต้นฉบับใหญ่เกิน 14 MB กรุณาเลือกรูปอื่น');
+    }
     const mimeType = imageMimeTypeForFile(file);
-    if (!mimeType) return toast('ไฟล์นี้ไม่ใช่รูปภาพที่รองรับ กรุณาเลือกไฟล์รูป');
+    if (!mimeType) {
+      setReceiptStatus('error', 'ไฟล์นี้ยังเปิดไม่ได้', 'เลือกรูป JPEG, PNG หรือ WebP หรือถ่ายภาพใหม่', { step: 0, error: true });
+      return toast('ไฟล์นี้ไม่ใช่รูปภาพที่รองรับ กรุณาเลือกไฟล์รูป');
+    }
     const dataUrl = normalizeImageDataUrl(await readFileAsDataUrl(file), mimeType);
     const previewDataUrl = await renderImage(dataUrl, 0);
     state.source = source; state.rotation = 0; state.originalDataUrl = dataUrl;
     state.previewDataUrl = previewDataUrl; state.ocrRequestId = '';
     $('#image-preview').src = state.previewDataUrl;
     $('#preview-panel').classList.remove('hidden'); $('#review-panel').classList.add('hidden');
+    setReceiptStatus('ready', 'รูปพร้อมตรวจ', 'จัดให้ตัวเลขตั้งตรงและเห็นขอบใบชั่งครบก่อนเริ่มอ่าน', { step: 0 });
     $('#preview-panel').scrollIntoView({ behavior: 'smooth', block: 'start' });
   } catch (error) {
     console.error('Image selection failed', error);
+    setReceiptStatus('error', 'เปิดรูปไม่สำเร็จ', 'รูปยังไม่ถูกส่ง ลองเลือกรูปอื่นหรือถ่ายใหม่', { step: 0, error: true });
     toast('เปิดรูปนี้ไม่สำเร็จ กรุณาลองเลือกรูปอื่นหรือถ่ายใหม่');
   } finally {
     input.value = '';
@@ -699,7 +795,8 @@ async function analyzeImage() {
   if (!state.previewDataUrl) return toast('กรุณาเลือกรูปใบชั่งก่อน');
   const requestId = state.ocrRequestId || (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`);
   state.ocrRequestId = requestId;
-  setLoading(true, 'กำลังส่งบิลให้ AI อ่าน…');
+  setReceiptAnalysisBusy(true);
+  setReceiptStatus('uploading', 'กำลังส่งรูปเพื่ออ่านบิล', 'คงหน้านี้ไว้ได้ ระบบจะแสดงผลเมื่ออ่านเสร็จ', { step: 1 });
   try {
     const image = await imagePayload(state.previewDataUrl);
     let imageAlternates = [];
@@ -713,9 +810,10 @@ async function analyzeImage() {
     let lastError = null;
     for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
       try {
-        if (attempt > 0) setLoading(true, 'AI ยังประมวลผลอยู่… กำลังตรวจผลให้อัตโนมัติ');
+        if (attempt > 0) setReceiptStatus('processing', 'AI กำลังอ่านบิลอยู่', 'กำลังตรวจผลคำขอเดิมโดยอัตโนมัติ ไม่ได้เริ่มอ่านซ้ำ', { step: 1 });
         const data = await api('sales.analyze', payload, true, { timeoutMs: attempt === 0 ? 90000 : 20000, requestId });
         if (data && data.state === 'PROCESSING') {
+          setReceiptStatus('processing', 'AI กำลังอ่านบิลอยู่', 'ระบบจะตรวจผลให้อัตโนมัติ โปรดรอสักครู่', { step: 1 });
           await new Promise(resolve => setTimeout(resolve, 4000));
           continue;
         }
@@ -726,6 +824,7 @@ async function analyzeImage() {
         state.receipt = data.receipt; state.ocrRunId = data.ocrRunId; state.model = data.model;
         state.ocrRequestId = '';
         openReview(data.receipt, data.lowConfidenceFields || [], data.validation, false);
+        setReceiptStatus('review', 'อ่านบิลเสร็จแล้ว', 'ตรวจช่องที่ไฮไลต์และยอดเงินก่อนกดยืนยันบันทึก', { step: 2 });
         if (data.duplicateCandidates && data.duplicateCandidates.length) showValidation({ warnings: [{ message: 'พบรายการเดิมที่คล้ายกัน โปรดตรวจสอบก่อนบันทึก' }] });
         return;
       } catch (error) {
@@ -740,11 +839,18 @@ async function analyzeImage() {
     }
     if (lastError) throw lastError;
     throw appError('OCR_STILL_PROCESSING', 'ระบบยังประมวลผลภาพอยู่ คำขอเดิมยังถูกเก็บไว้ กดปุ่มอีกครั้งภายหลังเพื่อตรวจผลโดยไม่วิเคราะห์ซ้ำ');
-  } catch (error) { handleError(error); }
-  finally { setLoading(false); }
+  } catch (error) {
+    const retryingExistingRequest = Boolean(state.ocrRequestId);
+    const retryMessage = retryingExistingRequest
+      ? 'คำขอเดิมยังอยู่ กดตรวจผลอีกครั้งได้โดยไม่เริ่ม OCR ซ้ำ'
+      : 'รูปยังอยู่ในหน้านี้ คุณลองอ่านอีกครั้งได้';
+    setReceiptStatus('error', 'ยังอ่านบิลไม่สำเร็จ', `${error.message || 'เกิดข้อผิดพลาด'} ${retryMessage}`, { step: 1, error: true, action: 'retry-ocr', actionLabel: retryingExistingRequest ? 'ตรวจคำขอเดิมอีกครั้ง' : 'ลองอ่านอีกครั้ง' });
+    handleError(error);
+  } finally { setReceiptAnalysisBusy(false); }
 }
 
 function openManualForm() {
+  state.activeSaveQueueId = ''; clearReceiptStatus();
   state.source = 'MANUAL'; state.receipt = emptyReceipt(); state.ocrRunId = ''; state.ocrRequestId = ''; state.model = '';
   openReview(state.receipt, [], { warnings: [] }, false);
 }
@@ -846,6 +952,7 @@ async function saveSale(event, duplicateOverride = false) {
 
   saveButton.textContent = 'กำลังเก็บไว้ในเครื่อง…';
   setSyncStatus('กำลังบันทึกรายการ…');
+  setReceiptStatus('saving', 'กำลังบันทึกบิล', 'กำลังเก็บข้อมูลและภาพไว้ในเครื่องก่อนส่งขึ้น Google Sheets', { step: 3 });
   showSaveFeedback('working', 'กำลังบันทึกรายการ', 'กำลังเก็บข้อมูลและภาพใบชั่งไว้ในเครื่องอย่างปลอดภัย');
   try {
     const image = state.previewDataUrl ? await imagePayload(state.previewDataUrl) : null;
@@ -860,13 +967,16 @@ async function saveSale(event, duplicateOverride = false) {
       payload: { sale, laborEntries, contractorUpdates, image, source: state.source, ocrRunId: state.ocrRunId, model: state.model,
         idempotencyKey, duplicateOverride }
     });
+    state.activeSaveQueueId = idempotencyKey;
     localStorage.removeItem('palmDraft');
     localStorage.removeItem('palmIdempotencyKey');
-    resetCapture();
+    resetCapture({ preserveQueuedStatus: true });
+    setReceiptStatus('queued', 'เก็บบิลไว้ในเครื่องแล้ว', navigator.onLine ? 'กำลังส่งเข้า Google Sheets; จะแจ้งอีกครั้งเมื่อบันทึกสำเร็จ' : 'ยังออฟไลน์อยู่ บิลจะส่งอัตโนมัติเมื่ออินเทอร์เน็ตกลับมา', { step: 3 });
     await refreshQueueUI();
     showSaveFeedback('queued', 'เก็บรายการไว้ในเครื่องแล้ว', 'ระบบกำลังส่งเข้า Google Sheets อัตโนมัติ คุณปิดหน้านี้ได้', 5200);
     processPendingSaves(true);
   } catch (error) {
+    setReceiptStatus('error', 'เก็บบิลไว้ในเครื่องไม่สำเร็จ', 'ข้อมูลยังอยู่ในแบบฟอร์ม อย่าปิดหน้านี้ แล้วลองบันทึกอีกครั้ง', { step: 3, error: true, action: 'retry-local-save', actionLabel: 'ลองบันทึกอีกครั้ง' });
     showSaveFeedback('error', 'บันทึกรายการไม่สำเร็จ', 'ข้อมูลยังอยู่ในแบบฟอร์ม กรุณาอย่าเพิ่งปิดหน้านี้แล้วลองอีกครั้ง', 7000);
     handleError(appError('LOCAL_SAVE_FAILED', 'เก็บรายการไว้ในเครื่องไม่สำเร็จ กรุณาอย่าเพิ่งปิดหน้านี้', { message: error.message }));
   } finally {
@@ -876,11 +986,12 @@ async function saveSale(event, duplicateOverride = false) {
   }
 }
 
-function resetCapture() {
+function resetCapture(options = {}) {
   Object.assign(state, { originalDataUrl: '', previewDataUrl: '', rotation: 0, source: 'MANUAL', receipt: null,
     ocrRunId: '', ocrRequestId: '', model: '', editingSaleId: '', expectedUpdatedAt: '' });
   $('#preview-panel').classList.add('hidden'); $('#review-panel').classList.add('hidden'); $('#sale-form').reset();
   $('#deductions-list').innerHTML = ''; $('#labor-entries-list').innerHTML = ''; localStorage.removeItem('palmDraft');
+  if (!options.preserveQueuedStatus) { state.activeSaveQueueId = ''; clearReceiptStatus(); }
 }
 
 async function loadDashboard() {
@@ -1430,11 +1541,16 @@ async function processPendingSaves(interactive = false) {
       while (sending) {
         job.status = 'sending'; job.attempts = Number(job.attempts || 0) + 1; job.updatedAt = Date.now();
         await queuePut(job); await refreshQueueUI();
+        if (job.id === state.activeSaveQueueId) setReceiptStatus('saving', 'กำลังส่งบิลเข้า Google Sheets', 'ข้อมูลถูกเก็บไว้ในเครื่องแล้ว ระหว่างนี้อย่ากดส่งบิลเดิมซ้ำ', { step: 3 });
         try {
           await api('sales.create', job.payload, true, { timeoutMs: 50000 });
           try { await applyContractorUpdates(job.payload.contractorUpdates || []); }
           catch (contractorError) { console.warn('Unable to update contractor defaults', contractorError); }
           await queueDelete(job.id); savedCount += 1; sending = false;
+          if (job.id === state.activeSaveQueueId) {
+            state.activeSaveQueueId = '';
+            setReceiptStatus('saved', 'บันทึกบิลสำเร็จ', 'ส่งข้อมูลเข้า Google Sheets แล้ว', { step: 4 });
+          }
         } catch (error) {
           if (error.code === 'DUPLICATE_SUSPECTED') {
             if (interactive && confirm('พบข้อมูลคล้ายกับใบชั่งเดิม\n\nยืนยันว่าเป็นรายการใหม่และบันทึกต่อหรือไม่?')) {
@@ -1443,15 +1559,33 @@ async function processPendingSaves(interactive = false) {
             }
             job.status = 'blocked'; job.lastError = error.message; job.updatedAt = Date.now();
             await queuePut(job);
+            if (job.id === state.activeSaveQueueId) setReceiptStatus('error', 'บิลยังไม่ถูกส่ง', 'พบรายการที่คล้ายกัน บิลยังเก็บอยู่ในเครื่อง ให้ตรวจว่าเป็นคนละรายการแล้วลองส่งอีกครั้ง', { step: 3, error: true, action: 'retry-sync', actionLabel: 'ตรวจแล้วลองส่งอีกครั้ง' });
             if (interactive) showSaveFeedback('queued', 'รายการยังไม่ถูกส่ง', 'พบข้อมูลคล้ายรายการเดิม รายการนี้ยังเก็บอยู่ในเครื่องและรอให้คุณยืนยัน', 7000);
             sending = false; continue;
           }
           if (['NETWORK_ERROR', 'REQUEST_TIMEOUT', 'INVALID_RESPONSE', 'RATE_LIMITED'].includes(error.code)) {
-            const saved = await verifyQueuedSave(job);
-            if (saved) { await queueDelete(job.id); savedCount += 1; }
+            let saved = false;
+            try { saved = await verifyQueuedSave(job); }
+            catch (verifyError) {
+              job.status = 'pending'; job.lastError = verifyError.message; job.updatedAt = Date.now();
+              await queuePut(job);
+              if (job.id === state.activeSaveQueueId) setReceiptStatus('error', 'ตรวจผลการส่งไม่ได้', 'บิลยังอยู่ในคิวและจะไม่ถูกลบ กรุณาเชื่อมต่อบัญชีอีกครั้งเพื่อตรวจสถานะ', { step: 3, error: true, action: 'open-settings', actionLabel: 'เปิดการตั้งค่า' });
+              if (interactive) showSaveFeedback('error', 'ต้องเชื่อมต่อใหม่', 'บิลยังอยู่ในเครื่อง กรุณาตรวจ Access Token แล้วส่งอีกครั้ง', 7000);
+              sending = false;
+              if (verifyError.code === 'UNAUTHORIZED') { handleError(verifyError); return; }
+              continue;
+            }
+            if (saved) {
+              await queueDelete(job.id); savedCount += 1;
+              if (job.id === state.activeSaveQueueId) {
+                state.activeSaveQueueId = '';
+                setReceiptStatus('saved', 'บันทึกบิลสำเร็จ', 'เซิร์ฟเวอร์ยืนยันแล้วว่าบันทึกเข้า Google Sheets แม้การตอบกลับครั้งแรกขาดหาย', { step: 4 });
+              }
+            }
             else {
               job.status = 'pending'; job.lastError = error.message; job.updatedAt = Date.now();
               await queuePut(job);
+              if (job.id === state.activeSaveQueueId) setReceiptStatus('queued', 'บิลยังอยู่ในคิวส่ง', navigator.onLine ? 'การเชื่อมต่อยังไม่ยืนยันผล ระบบจะลองส่งใหม่โดยไม่สร้างบิลซ้ำ' : 'ออฟไลน์อยู่ บิลจะส่งอัตโนมัติเมื่ออินเทอร์เน็ตกลับมา', { step: 3, action: navigator.onLine ? 'retry-sync' : '', actionLabel: 'ลองส่งอีกครั้ง' });
               if (interactive) showSaveFeedback('queued', 'เก็บรายการไว้แล้ว แต่ยังส่งไม่สำเร็จ', 'ระบบจะส่งเข้า Google Sheets ให้อัตโนมัติเมื่อการเชื่อมต่อพร้อม', 6500);
             }
             sending = false; continue;
@@ -1459,6 +1593,7 @@ async function processPendingSaves(interactive = false) {
           job.status = error.code === 'UNAUTHORIZED' ? 'pending' : 'error';
           job.lastError = error.message; job.updatedAt = Date.now();
           await queuePut(job); sending = false;
+          if (job.id === state.activeSaveQueueId) setReceiptStatus('error', 'ส่งบิลไม่สำเร็จ', `${error.message || 'เกิดข้อผิดพลาด'} ข้อมูลยังเก็บอยู่ในเครื่อง`, { step: 3, error: true, action: error.code === 'UNAUTHORIZED' ? 'open-settings' : 'retry-sync', actionLabel: error.code === 'UNAUTHORIZED' ? 'เปิดการตั้งค่า' : 'ลองส่งอีกครั้ง' });
           if (interactive) showSaveFeedback('error', 'ส่งข้อมูลไม่สำเร็จ', `${error.message || 'เกิดข้อผิดพลาด'} — รายการยังเก็บอยู่ในเครื่อง`, 7000);
           if (error.code === 'UNAUTHORIZED') { handleError(error); return; }
         }

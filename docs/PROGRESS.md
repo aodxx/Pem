@@ -9,7 +9,7 @@
 - Phase 2 — Backend API / Validation / Duplicate / Audit: **Completed**
 - Phase 3 — Gemini Vision Structured OCR: **Completed and live verified**
 - Phase 4 — Mobile Frontend / Review / History / Edit: **Completed**
-- Phase 5 — Dashboard / Analytics: **Core completed; monthly insight enhancement in candidate**
+- Phase 5 — Dashboard / Analytics: **Completed and live verified**
 - Phase 6 — PWA / Offline App Shell: **Completed**
 - Phase 7 — Static / Unit QA: **Passed**
 - Phase 8 — Contractor & Labor Management: **Completed and live verified**
@@ -28,11 +28,11 @@
 
 ## Current production release
 
-- Frontend/PWA ที่ deploy แล้ว: `2.7.0`
+- Frontend/PWA ที่ deploy แล้ว: `2.7.1`
 - Backend ที่ deploy แล้ว: `1.3.1`
 - API: `v1`
 - Gemini schema: `1.0.0`
-- Service Worker cache: `palm-ledger-v2.7.0`
+- Service Worker cache: `palm-ledger-v2.7.1`
 - Incident history จาก frontend `2.6.6`: เคยมี OCR requests สองครั้งจบด้วย `GEMINI_UNAVAILABLE` จาก HTTP 503 high demand (21:38 และ 21:44 เวลาไทย)
 
 ## OCR hardening — live verified
@@ -51,12 +51,19 @@
 - ค่าเริ่มต้นเลือกปีปัจจุบันเพื่อให้กราฟเป็นลำดับเวลา; ตัวเลือก “ทุกปี” รวมเดือนชื่อเดียวกันจากทุกปีเพื่อดูฤดูกาล จึงไม่แสดงเป็นแนวโน้มตามเวลา
 - สถิตินับเฉพาะรายการขายที่บันทึกแล้ว ไม่รวมคำขอ OCR ที่ยังไม่ได้ยืนยันบันทึก
 
-## Dashboard monthly export candidate — not yet published
+## Dashboard monthly export — live verified
 
-- Frontend source candidate: `2.7.1`; production remains `2.7.0`; backend remains `1.3.1`
+- Frontend/PWA: `2.7.1`; backend remains `1.3.1`
 - เพิ่ม CSV UTF-8 พร้อม BOM ให้เปิดภาษาไทยใน spreadsheet ได้ และเพิ่มรายงานพิมพ์แนวนอนซึ่งผู้ใช้เลือก “บันทึกเป็น PDF” ใน dialog ของเบราว์เซอร์
 - ส่งออกตามปีที่เลือกหรือทุกปี พร้อมตาราง 12 เดือนและยอดรวม; เดือนที่ไม่มีข้อมูลเว้นช่องว่าง และระบุชัดว่า “ทุกปี” รวมเดือนชื่อเดียวกัน
 - ไม่เพิ่มการอ่าน/เขียนข้อมูลบน backend และไม่รวมชื่อผู้ซื้อหรือข้อมูลส่วนบุคคลในไฟล์สรุป
+
+## Upload Status Indicator candidate — not yet published
+
+- Frontend source candidate: `2.7.2`; production remains `2.7.1`; backend remains `1.3.1`
+- เพิ่ม stepper ที่แจ้งสถานะตั้งแต่รูปพร้อม, OCR, ตรวจข้อมูล, บันทึกลงเครื่อง/รอ sync จนถึงยืนยันว่าเข้า Google Sheets แล้ว
+- เพิ่มข้อความ error และ action retry ตามประเภทงาน พร้อมประกาศสถานะผ่าน `aria-live`; ระหว่าง OCR ใช้ indicator บนหน้าแทน fullscreen overlay เพื่อให้เห็นความคืบหน้า
+- ไม่เปลี่ยน Apps Script API หรือ schema; offline queue และ idempotency เดิมยังคงเป็นกลไกบันทึก
 
 ## UI polish
 
@@ -108,7 +115,7 @@ Backend backup helpers require one Apps Script update/deploy/setup before they b
 
 Only one user-device action remains before marking the project `Production Ready — Closed`:
 
-1. Open the deployed PWA (`2.7.0`) on the real mobile device.
+1. Open the deployed PWA (`2.7.1`) on the real mobile device.
 2. Scan a receipt containing seconds in TimeIn/TimeOut.
 3. Save the sale normally without manually rounding the times.
 4. Verify the new Sales row stores the same `HH:MM:SS` values shown on the receipt.

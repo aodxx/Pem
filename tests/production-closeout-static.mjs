@@ -4,6 +4,7 @@ const index = fs.readFileSync('frontend/index.html', 'utf8');
 const config = fs.readFileSync('frontend/config.js', 'utf8');
 const sw = fs.readFileSync('frontend/sw.js', 'utf8');
 const styles = fs.readFileSync('frontend/styles-v2.css', 'utf8');
+const receiptStatusCss = fs.readFileSync('frontend/styles-core-v2.5.2.css', 'utf8');
 const contrast = fs.readFileSync('frontend/contrast-fix.css', 'utf8');
 const developerCredit = fs.readFileSync('frontend/developer-credit.css', 'utf8');
 const dashboardCss = fs.readFileSync('frontend/dashboard-analytics.css', 'utf8');
@@ -19,9 +20,9 @@ function assert(condition, message) {
   if (!condition) throw new Error(message);
 }
 
-assert(pkg.version === '2.7.1', 'package.json version must be 2.7.1');
-assert(config.includes("version: '2.7.1'"), 'frontend config version must be 2.7.1');
-assert(sw.includes("const CACHE = 'palm-ledger-v2.7.1';"), 'service worker cache must be 2.7.1');
+assert(pkg.version === '2.7.2', 'package.json version must be 2.7.2');
+assert(config.includes("version: '2.7.2'"), 'frontend config version must be 2.7.2');
+assert(sw.includes("const CACHE = 'palm-ledger-v2.7.2';"), 'service worker cache must be 2.7.2');
 assert(sw.includes("'modern-polish.css'"), 'modern polish stylesheet must be cached offline');
 assert(sw.includes("'contrast-fix.css'"), 'contrast fix stylesheet must be cached offline');
 assert(sw.includes("'developer-credit.css'"), 'developer credit stylesheet must be cached offline');
@@ -34,6 +35,10 @@ assert(styles.includes('./dashboard-analytics.css'), 'dashboard analytics styles
 assert(index.includes('dashboard-analytics.js'), 'dashboard analytics helper must load before app.js');
 assert(index.includes('data-dashboard-metric="price"'), 'price trend control must be present');
 assert(index.includes('id="export-dashboard-csv"') && index.includes('id="export-dashboard-pdf"'), 'dashboard CSV/PDF export controls must be present');
+assert(index.includes('id="receipt-status-indicator"') && index.includes('aria-live="polite"'), 'receipt status indicator must be accessible and present');
+assert(index.includes('id="receipt-status-steps"') && index.includes('id="receipt-status-action"'), 'receipt status steps and retry action must be present');
+assert(app.includes('function setReceiptStatus(') && app.includes('activeSaveQueueId'), 'receipt status state machine must be wired to active queued sale');
+assert(receiptStatusCss.includes('.receipt-status-indicator') && receiptStatusCss.includes('.receipt-status-steps'), 'receipt status component styles must be present');
 assert(dashboardCss.includes('.price-line-svg'), 'dashboard price trend must use a responsive line chart');
 assert(dashboardCss.includes('@media print') && dashboardCss.includes('#dashboard-print-report'), 'dashboard print report must have a print-only layout');
 assert(dashboardJs.includes('insightCards'), 'dashboard analytics insights must be computed from real monthly series');
@@ -45,7 +50,7 @@ assert(contrast.includes('--contrast-active-bg: #e9f8c7;'), 'active bottom nav m
 assert(index.includes('name="timeIn" type="time" step="1"'), 'timeIn must accept seconds');
 assert(index.includes('name="timeOut" type="time" step="1"'), 'timeOut must accept seconds');
 assert(config.includes('Developed by <b>aod</b>'), 'developer credit must be present');
-assert(developerCredit.includes('PALM LEDGER 2.7.1'), 'developer credit stylesheet must match release 2.7.1');
+assert(developerCredit.includes('PALM LEDGER 2.7.2'), 'developer credit stylesheet must match release 2.7.2');
 assert(config.includes('https://www.facebook.com/share/1AWvhjdr44/'), 'developer Facebook URL must be present');
 assert(developerCredit.includes('.developer-facebook'), 'developer Facebook control must be styled');
 
@@ -60,6 +65,8 @@ for (const required of [
   '--max-time 30',
   '--retry-all-errors',
   "grep -F 'id=\"export-dashboard-csv\"' /tmp/index.html",
+  "grep -F 'id=\"receipt-status-indicator\"' /tmp/index.html",
+  "grep -F 'function setReceiptStatus' /tmp/app.js",
   "grep -F 'function exportDashboardCsv' /tmp/app.js",
   "grep -F 'function exportDashboardPdf' /tmp/app.js",
   "grep -F '#dashboard-print-report' /tmp/dashboard-analytics.css",
@@ -69,6 +76,7 @@ for (const required of [
 ]) {
   assert(productionSmoke.includes(required), `production smoke is missing: ${required}`);
 }
+assert(productionSmoke.includes("version: '2.7.2'") && productionSmoke.includes("palm-ledger-v2.7.2"), 'production smoke must verify frontend 2.7.2');
 
 for (const workflow of [ciWorkflow, deployWorkflow]) {
   assert(workflow.includes('actions/checkout@v5'), 'workflow must use the Node.js 24 checkout runtime');

@@ -39,6 +39,15 @@ for (const backendOcrMarker of ['getGeminiFallbackModels_', 'gemini-3.8-flash', 
 for (const visibilityMarker of ['history-count', 'clear-filters']) {
   if (!html.includes(visibilityMarker)) throw new Error(`Missing record-visibility marker: ${visibilityMarker}`);
 }
+for (const receiptStatusElement of ['receipt-status-indicator', 'receipt-status-title', 'receipt-status-message', 'receipt-status-steps', 'receipt-status-progress', 'receipt-status-action']) {
+  if (!html.includes(`id="${receiptStatusElement}"`)) throw new Error(`Missing receipt status element: ${receiptStatusElement}`);
+}
+for (const receiptStatusBehavior of ['function setReceiptStatus(', 'function clearReceiptStatus(', 'function setReceiptAnalysisBusy(', 'function handleReceiptStatusAction(', "'retry-ocr'", "'retry-local-save'", "'retry-sync'", 'activeSaveQueueId']) {
+  if (!app.includes(receiptStatusBehavior)) throw new Error(`Missing receipt status behavior: ${receiptStatusBehavior}`);
+}
+for (const receiptStatusState of ["'uploading'", "'processing'", "'review'", "'saving'", "'queued'", "'saved'"]) {
+  if (!app.includes(receiptStatusState)) throw new Error(`Missing receipt status state: ${receiptStatusState}`);
+}
 if (!app.includes('<option value="all">ทุกปี</option>')) throw new Error('Missing all-years dashboard option');
 for (const dashboardMarker of ['dashboard-metric-tabs', 'monthly-insights', 'dashboard-data-note', 'monthly-chart-axis', 'monthly-chart-months', 'monthly-breakdown-body', 'monthly-breakdown-total', 'export-dashboard-csv', 'export-dashboard-pdf', 'dashboard-export-help']) {
   if (!html.includes(dashboardMarker)) throw new Error(`Missing dashboard analytics element: ${dashboardMarker}`);
