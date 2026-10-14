@@ -2,6 +2,12 @@
   'use strict';
 
   const MONTHS = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
+  const EXPORT_COLUMNS = Object.freeze([
+    ['period', 'ช่วงเวลา'], ['month', 'เดือน'], ['saleCount', 'จำนวนใบชั่ง'],
+    ['weightKg', 'ผลผลิต (กก.)'], ['revenue', 'ยอดรับจากใบชั่ง (บาท)'],
+    ['averagePricePerKg', 'ราคาเฉลี่ย (บาท/กก.)'], ['laborCost', 'ค่าแรง (บาท)'],
+    ['netAfterLabor', 'คงเหลือหลังหักค่าแรง (บาท)']
+  ].map(column => Object.freeze(column)));
 
   function numeric(value) {
     const parsed = Number(typeof value === 'string' ? value.replace(/,/g, '').trim() : value);
@@ -46,6 +52,72 @@
     return numeric(item && item.revenue);
   }
 
+  function summarizeSeries(series) {
+    const months = normalizeSeries(series);
+    const totals = months.reduce((result, item) => {
+      result.weightKg += item.weightKg;
+      result.revenue += item.revenue;
+      result.weightedPrice += item.weightKg * item.averagePricePerKg;
+      result.saleCount += item.saleCount;
+      result.laborCost += item.laborCost;
+      result.netAfterLabor += item.netAfterLabor;
+      return result;
+    }, { weightKg: 0, revenue: 0, weightedPrice: 0, saleCount: 0, laborCost: 0, netAfterLabor: 0 });
+    return {
+      months,
+      totals: {
+        weightKg: totals.weightKg,
+        revenue: totals.revenue,
+        averagePricePerKg: totals.weightKg ? totals.weightedPrice / totals.weightKg : 0,
+        saleCount: totals.saleCount,
+        laborCost: totals.laborCost,
+        netAfterLabor: totals.netAfterLabor
+      }
+    };
+  }
+
+  function exportTable(series, periodLabel) {
+    const summary = summarizeSeries(series);
+    const rows = summary.months.map(item => {
+      const hasSales = item.saleCount > 0;
+      return {
+        period: String(periodLabel || ''),
+        month: monthLabel(item.month),
+        saleCount: hasSales ? item.saleCount : '',
+        weightKg: hasSales ? item.weightKg : '',
+        revenue: hasSales ? item.revenue : '',
+        averagePricePerKg: hasSales ? item.averagePricePerKg : '',
+        laborCost: hasSales ? item.laborCost : '',
+        netAfterLabor: hasSales ? item.netAfterLabor : ''
+      };
+    });
+    const totals = summary.totals;
+    rows.push({
+      period: String(periodLabel || ''), month: 'รวมช่วงที่เลือก', saleCount: totals.saleCount,
+      weightKg: totals.weightKg, revenue: totals.revenue,
+      averagePricePerKg: totals.averagePricePerKg, laborCost: totals.laborCost,
+      netAfterLabor: totals.netAfterLabor
+    });
+    return { columns: EXPORT_COLUMNS, rows };
+  }
+
+  function csvCell(value) {
+    if (typeof value === 'number' && Number.isFinite(value)) return String(Math.round(value * 100) / 100);
+    let text = String(value ?? '');
+    if (/^[=+@\-]/.test(text)) text = `'${text}`;
+    return `"${text.replace(/"/g, '""')}"`;
+  }
+
+  function toCsv(table) {
+    const columns = Array.isArray(table && table.columns) ? table.columns : [];
+    const rows = Array.isArray(table && table.rows) ? table.rows : [];
+    const csvRows = [
+      columns.map(([, label]) => label),
+      ...rows.map(row => columns.map(([key]) => row[key]))
+    ];
+    return '\uFEFF' + csvRows.map(row => row.map(csvCell).join(',')).join('\r\n');
+  }
+
   function insightCards(series, allYears = false) {
     const active = normalizeSeries(series).filter(item => item.saleCount > 0);
     if (!active.length) return [];
@@ -76,5 +148,5 @@
     return cards;
   }
 
-  window.PalmDashboardAnalytics = Object.freeze({ MONTHS, normalizeSeries, monthLabel, metricValue, insightCards });
+  window.PalmDashboardAnalytics = Object.freeze({ MONTHS, normalizeSeries, monthLabel, metricValue, summarizeSeries, exportTable, toCsv, insightCards });
 })();

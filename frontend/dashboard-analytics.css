@@ -129,3 +129,54 @@
 @media (prefers-reduced-motion: reduce) {
   .chart-bar { transition: none; }
 }
+
+.dashboard-export-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin: 0 0 12px;
+}
+.dashboard-export-buttons { display: flex; gap: 8px; }
+.dashboard-export-buttons .button { min-height: 40px; padding: 8px 13px; font-size: .78rem; }
+#dashboard-export-help { color: var(--muted); font-size: .7rem; line-height: 1.45; }
+#dashboard-print-report { display: none; }
+
+@media (max-width: 520px) {
+  .dashboard-export-bar { align-items: flex-start; flex-direction: column; }
+  .dashboard-export-buttons { width: 100%; }
+  .dashboard-export-buttons .button { flex: 1; }
+}
+
+@media print {
+  @page { size: A4 landscape; margin: 12mm; }
+  html, body { width: auto !important; min-height: 0 !important; margin: 0 !important; overflow: visible !important; background: #fff !important; }
+  body > :not(#dashboard-print-report) { display: none !important; }
+  body > #dashboard-print-report {
+    display: block !important;
+    position: static !important;
+    box-sizing: border-box !important;
+    width: 100% !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    color: #18251e !important;
+    background: #fff !important;
+    font: 10pt/1.45 Arial, sans-serif !important;
+  }
+  #dashboard-print-report .dashboard-print-brand { margin-bottom: 3mm; color: #246443; font-size: 9pt; font-weight: 800; letter-spacing: .04em; }
+  #dashboard-print-report .dashboard-print-brand span { margin-left: 5px; color: #526157; font-weight: 500; letter-spacing: 0; }
+  #dashboard-print-report h1 { margin: 0 0 2mm; color: #16392b; font-size: 19pt; }
+  #dashboard-print-report p { margin: 1mm 0; }
+  #dashboard-print-report .dashboard-print-note { margin-top: 3mm; color: #46564b; font-size: 8.5pt; }
+  #dashboard-print-report table { width: 100%; margin-top: 6mm; border-collapse: collapse; table-layout: fixed; }
+  #dashboard-print-report th, #dashboard-print-report td { padding: 6px 7px; border: 1px solid #aeb8b0; text-align: right; vertical-align: middle; }
+  #dashboard-print-report th { color: #16392b; background: #eaf1e6 !important; font-weight: 700; print-color-adjust: exact; }
+  #dashboard-print-report th:first-child, #dashboard-print-report td:first-child { text-align: left; }
+  #dashboard-print-report tbody tr:nth-child(even) td { background: #f8faf6 !important; print-color-adjust: exact; }
+  #dashboard-print-report tfoot td { border-top: 2px solid #526b5c; background: #eaf1e6 !important; font-weight: 800; print-color-adjust: exact; }
+  #dashboard-print-report thead { display: table-header-group; }
+  #dashboard-print-report tr { break-inside: avoid; page-break-inside: avoid; }
+  #dashboard-print-report .dashboard-print-footer { margin-top: 6mm; color: #5d6b60; font-size: 8pt; }
+}

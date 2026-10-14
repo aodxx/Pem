@@ -141,6 +141,10 @@
       </div>
       <section class="panel data-panel analytics-panel">
         <div class="panel-heading"><div><span id="monthly-period-label" class="eyebrow">รายเดือน</span><h2>รายรับ ราคา และผลผลิต</h2><p>ดูฤดูกาลขายและราคาเฉลี่ยที่ได้รับในแต่ละเดือน</p></div></div>
+        <div class="dashboard-export-bar" role="group" aria-label="ส่งออกรายงานรายเดือน">
+          <div class="dashboard-export-buttons"><button id="export-dashboard-csv" class="button secondary" type="button" aria-describedby="dashboard-export-help">ดาวน์โหลด CSV</button><button id="export-dashboard-pdf" class="button primary" type="button" aria-describedby="dashboard-export-help">บันทึก PDF</button></div>
+          <small id="dashboard-export-help">ส่งออกตามปีที่เลือก • PDF เปิดหน้าพิมพ์ให้เลือก “บันทึกเป็น PDF”</small>
+        </div>
         <div id="monthly-insights" class="analytics-insights" aria-live="polite" aria-label="สรุปเดือนเด่น"></div>
         <p id="dashboard-data-note" class="analytics-note">แสดงเฉพาะรายการขายที่บันทึกแล้ว • ราคาเฉลี่ยถ่วงน้ำหนักตามกิโลกรัม</p>
         <div id="dashboard-metric-tabs" class="metric-tabs" role="group" aria-label="เลือกข้อมูลในกราฟรายเดือน">
@@ -268,6 +272,7 @@
     <div class="viewer-actions sale-detail-actions"><button id="detail-view-receipt" class="button secondary" type="button">ดูภาพใบชั่ง</button><button id="detail-edit-sale" class="button primary" type="button">แก้ไขรายการ</button></div>
   </dialog>
 
+  <section id="dashboard-print-report" aria-hidden="true" role="document"></section>
   <section id="save-feedback" class="save-feedback hidden" role="status" aria-live="assertive" aria-atomic="true">
     <span class="save-feedback-icon" aria-hidden="true"></span>
     <span class="save-feedback-copy"><strong id="save-feedback-title">กำลังบันทึก…</strong><small id="save-feedback-message">กรุณารอสักครู่</small></span>

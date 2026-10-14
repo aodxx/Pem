@@ -24,7 +24,7 @@ function init() {
   $('#api-url').value = CONFIG.apiUrl;
   $('#access-token').value = state.accessToken;
   $('#app-version').textContent = CONFIG.version;
-  bindNavigation(); bindCapture(); bindForm(); bindLabor(); bindSettings(); bindFilters(); bindSaveFeedback(); setupInstall();
+  bindNavigation(); bindCapture(); bindForm(); bindLabor(); bindSettings(); bindFilters(); bindDashboardExport(); bindSaveFeedback(); setupInstall();
   bindReceiptViewer(); bindSaleDetail();
   initLoadingAnimation(); populateYears(); updateConnectionUI(); restoreDraft();
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js').catch(() => {});
@@ -439,6 +439,19 @@ function bindFilters() {
   $('#dashboard-year').addEventListener('change', loadDashboard);
   $('#dashboard-metric-tabs').addEventListener('click', handleDashboardMetricClick);
   updateFilterDrawerStatus();
+}
+
+function bindDashboardExport() {
+  $('#export-dashboard-csv').addEventListener('click', exportDashboardCsv);
+  $('#export-dashboard-pdf').addEventListener('click', exportDashboardPdf);
+}
+
+function setDashboardExportBusy(busy) {
+  ['#export-dashboard-csv', '#export-dashboard-pdf'].forEach(selector => {
+    const button = $(selector);
+    button.disabled = Boolean(busy);
+    button.setAttribute('aria-busy', String(Boolean(busy)));
+  });
 }
 
 function updateFilterDrawerStatus() {
@@ -872,6 +885,7 @@ function resetCapture() {
 
 async function loadDashboard() {
   if (!ensureConnected(false)) return;
+  setDashboardExportBusy(true);
   setLoading(true, 'กำลังสรุปข้อมูล…');
   try {
     const selectedYear = $('#dashboard-year').value || 'all';
@@ -898,7 +912,7 @@ async function loadDashboard() {
       ? 'นับเฉพาะรายการขายที่บันทึกแล้ว • มุมมองทุกปีรวมเดือนชื่อเดียวกันเข้าด้วยกัน จึงใช้ดูฤดูกาล ไม่ใช่เส้นเวลาเรียงปีต่อปี'
       : 'รายรับคือยอดสุทธิจากใบชั่งก่อนหักค่าแรง • ราคาเฉลี่ยถ่วงน้ำหนักตามกิโลกรัม • นับเฉพาะรายการขายที่บันทึกแล้ว';
     renderDashboardAnalytics(); renderBuyers(data.buyerComparison || []);
-  } catch (error) { handleError(error); } finally { setLoading(false); }
+  } catch (error) { handleError(error); } finally { setLoading(false); setDashboardExportBusy(false); }
 }
 
 function renderDashboardAnalytics() {
@@ -1016,22 +1030,126 @@ function renderMonthlyInsights(series, allYears) {
 
 function renderMonthlyBreakdown(series) {
   const analytics = window.PalmDashboardAnalytics;
-  const items = analytics.normalizeSeries(series);
-  const totals = items.reduce((result, item) => {
-    result.weightKg += item.weightKg;
-    result.revenue += item.revenue;
-    result.weightedPrice += item.weightKg * item.averagePricePerKg;
-    result.saleCount += item.saleCount;
-    result.laborCost += item.laborCost;
-    result.netAfterLabor += item.netAfterLabor;
-    return result;
-  }, { weightKg: 0, revenue: 0, weightedPrice: 0, saleCount: 0, laborCost: 0, netAfterLabor: 0 });
+  const { months: items, totals } = analytics.summarizeSeries(series);
   $('#monthly-breakdown-body').innerHTML = items.map(item => {
     const hasSales = item.saleCount > 0;
     return `<tr><th scope="row">${analytics.monthLabel(item.month)}</th><td>${hasSales ? formatNumber(item.saleCount) : '—'}</td><td>${hasSales ? `${formatNumber(item.weightKg, 0)} กก.` : '—'}</td><td>${hasSales ? formatMoney(item.revenue) : '—'}</td><td>${hasSales ? `${formatNumber(item.averagePricePerKg, 2)} บาท` : '—'}</td><td>${hasSales ? formatMoney(item.laborCost) : '—'}</td><td>${hasSales ? formatMoney(item.netAfterLabor) : '—'}</td></tr>`;
   }).join('');
-  const averagePrice = totals.weightKg ? totals.weightedPrice / totals.weightKg : 0;
+  const averagePrice = totals.averagePricePerKg;
   $('#monthly-breakdown-total').innerHTML = `<tr><th scope="row">รวมช่วงที่เลือก</th><td>${formatNumber(totals.saleCount)}</td><td>${formatNumber(totals.weightKg, 0)} กก.</td><td>${formatMoney(totals.revenue)}</td><td>${formatNumber(averagePrice, 2)} บาท</td><td>${formatMoney(totals.laborCost)}</td><td>${formatMoney(totals.netAfterLabor)}</td></tr>`;
+}
+
+function getDashboardExportReport() {
+  if (!Array.isArray(state.dashboardSeries) || !state.dashboardSeries.length) {
+    toast('กรุณารอให้แดชบอร์ดโหลดข้อมูลก่อนส่งออก');
+    return null;
+  }
+  const selectedScope = $('#dashboard-year').value || 'all';
+  const loadedScope = state.dashboardAllYears ? 'all' : state.dashboardYear;
+  if (String(selectedScope) !== String(loadedScope)) {
+    toast('กำลังโหลดข้อมูลของช่วงเวลาที่เลือก กรุณารอสักครู่');
+    return null;
+  }
+  const allYears = Boolean(state.dashboardAllYears);
+  const selectedYear = Number(state.dashboardYear) || new Date().getFullYear();
+  return {
+    ...window.PalmDashboardAnalytics.summarizeSeries(state.dashboardSeries),
+    allYears,
+    periodLabel: allYears ? 'ทุกปี — รวมเดือนชื่อเดียวกันจากทุกปี' : `ปี ${selectedYear + 543}`,
+    filePeriod: allYears ? 'all-years' : String(selectedYear),
+    generatedAt: new Date().toLocaleString('th-TH', { timeZone: 'Asia/Bangkok' })
+  };
+}
+
+function getDashboardExportTable(report) {
+  return window.PalmDashboardAnalytics.exportTable(report.months, report.periodLabel);
+}
+
+function exportDashboardCsv() {
+  try {
+    const report = getDashboardExportReport();
+    if (!report) return;
+    const { columns, rows } = getDashboardExportTable(report);
+    const csv = window.PalmDashboardAnalytics.toCsv({ columns, rows });
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `palm-ledger-monthly-${report.filePeriod}-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    toast('ดาวน์โหลด CSV สรุปรายเดือนแล้ว');
+  } catch (error) {
+    console.error('Dashboard CSV export failed', error);
+    toast('ส่งออก CSV ไม่สำเร็จ กรุณาลองอีกครั้ง');
+  }
+}
+
+function formatDashboardExportCell(key, value) {
+  if (value === '' || value === null || value === undefined) return '—';
+  if (key === 'saleCount') return formatNumber(value, 0);
+  if (key === 'weightKg') return `${formatNumber(value, 2)} กก.`;
+  if (key === 'averagePricePerKg') return `${formatNumber(value, 2)} บาท`;
+  if (['revenue', 'laborCost', 'netAfterLabor'].includes(key)) return formatMoney(value);
+  return String(value);
+}
+
+function exportDashboardPdf() {
+  let cleanup;
+  try {
+    const report = getDashboardExportReport();
+    if (!report) return;
+    if (typeof window.print !== 'function') {
+      toast('เบราว์เซอร์นี้ไม่รองรับการพิมพ์เป็น PDF');
+      return;
+    }
+    const { columns, rows } = getDashboardExportTable(report);
+    const printColumns = columns.filter(([key]) => key !== 'period');
+    const note = report.allYears
+      ? 'มุมมองทุกปีรวมเดือนชื่อเดียวกันจากหลายปี จึงใช้ดูฤดูกาล ไม่ใช่แนวโน้มเรียงตามปี'
+      : 'รวมเฉพาะรายการขายที่บันทึกแล้ว • ราคาเฉลี่ยถ่วงน้ำหนักตามกิโลกรัม';
+    let reportElement = $('#dashboard-print-report');
+    if (!reportElement) {
+      reportElement = document.createElement('section');
+      reportElement.id = 'dashboard-print-report';
+      reportElement.setAttribute('role', 'document');
+      document.body.appendChild(reportElement);
+    }
+    reportElement.innerHTML = `
+      <header class="dashboard-print-header">
+        <div class="dashboard-print-brand">PALM LEDGER <span>สมุดสวนปาล์ม</span></div>
+        <h1>รายงานสรุปรายเดือน</h1>
+        <p>ช่วงเวลา: ${escapeHtml(report.periodLabel)} <span>•</span> สร้างเมื่อ ${escapeHtml(report.generatedAt)}</p>
+        <p class="dashboard-print-note">${escapeHtml(note)}<br>ยอดรับจากใบชั่งเป็นยอดก่อนหักค่าแรง และยอดคงเหลือหลังค่าแรงยังไม่ใช่กำไรสุทธิ</p>
+      </header>
+      <table aria-label="สรุปข้อมูลรายเดือน">
+        <thead><tr>${printColumns.map(([, label]) => `<th scope="col">${escapeHtml(label)}</th>`).join('')}</tr></thead>
+        <tbody>${rows.slice(0, -1).map(row => `<tr>${printColumns.map(([key]) => `<td>${escapeHtml(formatDashboardExportCell(key, row[key]))}</td>`).join('')}</tr>`).join('')}</tbody>
+        <tfoot><tr>${printColumns.map(([key]) => `<td>${escapeHtml(formatDashboardExportCell(key, rows[rows.length - 1][key]))}</td>`).join('')}</tr></tfoot>
+      </table>
+      <footer class="dashboard-print-footer">รายงานนี้สร้างจากข้อมูลสรุปในแดชบอร์ด PALM LEDGER</footer>`;
+    reportElement.setAttribute('aria-hidden', 'false');
+
+    const previousTitle = document.title;
+    document.title = `PALM_LEDGER_monthly_${report.filePeriod}`;
+    let cleanupTimer;
+    cleanup = () => {
+      reportElement.setAttribute('aria-hidden', 'true');
+      document.title = previousTitle;
+      window.removeEventListener('afterprint', cleanup);
+      window.clearTimeout(cleanupTimer);
+    };
+    window.addEventListener('afterprint', cleanup, { once: true });
+    cleanupTimer = window.setTimeout(cleanup, 120000);
+    window.print();
+    toast('ในหน้าพิมพ์ เลือก “บันทึกเป็น PDF” เพื่อดาวน์โหลดรายงาน');
+  } catch (error) {
+    if (cleanup) cleanup();
+    console.error('Dashboard PDF export failed', error);
+    toast('เปิดรายงาน PDF ไม่สำเร็จ กรุณาลองอีกครั้ง');
+  }
 }
 
 function renderBuyers(items) {

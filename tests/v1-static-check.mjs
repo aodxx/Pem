@@ -40,13 +40,15 @@ for (const visibilityMarker of ['history-count', 'clear-filters']) {
   if (!html.includes(visibilityMarker)) throw new Error(`Missing record-visibility marker: ${visibilityMarker}`);
 }
 if (!app.includes('<option value="all">ทุกปี</option>')) throw new Error('Missing all-years dashboard option');
-for (const dashboardMarker of ['dashboard-metric-tabs', 'monthly-insights', 'dashboard-data-note', 'monthly-chart-axis', 'monthly-chart-months', 'monthly-breakdown-body', 'monthly-breakdown-total']) {
+for (const dashboardMarker of ['dashboard-metric-tabs', 'monthly-insights', 'dashboard-data-note', 'monthly-chart-axis', 'monthly-chart-months', 'monthly-breakdown-body', 'monthly-breakdown-total', 'export-dashboard-csv', 'export-dashboard-pdf', 'dashboard-export-help']) {
   if (!html.includes(dashboardMarker)) throw new Error(`Missing dashboard analytics element: ${dashboardMarker}`);
 }
-for (const dashboardMarker of ['renderDashboardAnalytics', 'renderMonthlyInsights', 'renderMonthlyBreakdown', 'price-change', 'dashboardMetric']) {
+for (const dashboardMarker of ['renderDashboardAnalytics', 'renderMonthlyInsights', 'renderMonthlyBreakdown', 'price-change', 'dashboardMetric', 'exportDashboardCsv', 'exportDashboardPdf', 'text/csv;charset=utf-8', 'window.print()']) {
   if (!app.includes(dashboardMarker)) throw new Error(`Missing dashboard analytics behavior: ${dashboardMarker}`);
 }
-if (!dashboardAnalytics.includes('window.PalmDashboardAnalytics')) throw new Error('Dashboard analytics helper is not exposed to the app');
+for (const exportHelper of ['window.PalmDashboardAnalytics', 'summarizeSeries', 'exportTable', 'toCsv']) {
+  if (!dashboardAnalytics.includes(exportHelper)) throw new Error(`Missing dashboard export helper: ${exportHelper}`);
+}
 const ids = [...app.matchAll(/\$\(['"]#([a-zA-Z0-9_-]+)['"]\)/g)].map(match => match[1]);
 for (const id of new Set(ids)) {
   if (!html.includes(`id="${id}"`)) throw new Error(`Frontend references missing element: #${id}`);

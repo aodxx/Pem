@@ -19,6 +19,25 @@ assert.equal(normalized[3].month, '04');
 assert.equal(normalized[3].saleCount, 0, 'missing months should be represented as no-data, not fabricated sales');
 assert.equal(analytics.metricValue(normalized[1], 'weight'), 2000);
 assert.equal(analytics.metricValue(normalized[2], 'price'), 15);
+const summary = JSON.parse(JSON.stringify(analytics.summarizeSeries(fixture)));
+assert.equal(summary.months.length, 12, 'export summary should include all calendar months');
+assert.deepEqual(summary.totals, {
+  weightKg: 4000, revenue: 48000, averagePricePerKg: 12, saleCount: 4, laborCost: 3500, netAfterLabor: 44500
+});
+assert.deepEqual(JSON.parse(JSON.stringify(analytics.summarizeSeries([]))).totals, {
+  weightKg: 0, revenue: 0, averagePricePerKg: 0, saleCount: 0, laborCost: 0, netAfterLabor: 0
+});
+const exportData = JSON.parse(JSON.stringify(analytics.exportTable(fixture, 'ปี 2569')));
+assert.equal(exportData.rows.length, 13, 'CSV/PDF table should include twelve months and one total row');
+assert.equal(exportData.rows[3].saleCount, '', 'months without sales should have blank values in exports');
+assert.equal(exportData.rows[12].month, 'รวมช่วงที่เลือก');
+assert.equal(exportData.rows[12].averagePricePerKg, 12, 'total average price should be weighted by sold weight');
+const csv = analytics.toCsv(exportData);
+assert.equal(csv.charCodeAt(0), 0xfeff, 'CSV should include a UTF-8 BOM for Thai spreadsheet compatibility');
+assert.ok(csv.includes('"ปี 2569","ม.ค.",1,1000,11000,11,1000,10000'));
+assert.ok(csv.includes('"ปี 2569","เม.ย.","","","","","",""'));
+assert.ok(csv.endsWith('"ปี 2569","รวมช่วงที่เลือก",4,4000,48000,12,3500,44500'));
+assert.ok(analytics.toCsv(analytics.exportTable(fixture, '=2+2')).includes("\"'=2+2\""), 'CSV text cells should be guarded against formula injection');
 
 const cards = JSON.parse(JSON.stringify(analytics.insightCards(fixture, false)));
 assert.deepEqual(cards.slice(0, 3).map(card => [card.key, card.month, card.value]), [

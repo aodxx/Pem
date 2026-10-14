@@ -28,12 +28,12 @@
 
 ## Current production release
 
-- Frontend/PWA ที่ deploy แล้ว: `2.6.6`
+- Frontend/PWA ที่ deploy แล้ว: `2.7.0`
 - Backend ที่ deploy แล้ว: `1.3.1`
 - API: `v1`
 - Gemini schema: `1.0.0`
-- Service Worker cache: `palm-ledger-v2.6.6`
-- หลัง deploy มี OCR requests สองครั้งที่จบด้วย `GEMINI_UNAVAILABLE` จาก HTTP 503 high demand (21:38 และ 21:44 เวลาไทย)
+- Service Worker cache: `palm-ledger-v2.7.0`
+- Incident history จาก frontend `2.6.6`: เคยมี OCR requests สองครั้งจบด้วย `GEMINI_UNAVAILABLE` จาก HTTP 503 high demand (21:38 และ 21:44 เวลาไทย)
 
 ## OCR hardening — live verified
 
@@ -43,14 +43,20 @@
 - ปรับ prompt ให้รับมือภาพหมุน/เอียง กระดาษยับ ซีด สกปรก มีเงา/แสงสะท้อน และให้ใช้สมการเพื่อตรวจทานโดยไม่เดาตัวเลข
 - หน้าเว็บรุ่น 2.6.6 และ backend 1.3.1 ผ่านการตรวจ health/deploy; บัญชีจริงยังควรติดตาม Logs เมื่อมีการทดสอบภาพบิลหลายรูปแบบ
 
-## Dashboard analytics candidate — not yet published
+## Dashboard analytics — live verified
 
-- Frontend source candidate: `2.7.0`; backend remains `1.3.1` (ไม่ต้อง deploy Apps Script เพิ่ม)
+- Frontend/PWA: `2.7.0`; backend remains `1.3.1` (ไม่ต้อง deploy Apps Script เพิ่ม)
 - เพิ่มกราฟสลับดูรายรับจากใบชั่ง ราคาเฉลี่ยต่อกิโลกรัม และน้ำหนักผลผลิตรายเดือน พร้อมตารางยอดขาย/ค่าแรง/คงเหลือหลังค่าแรง
 - เพิ่ม insight เดือนที่รายรับ ราคาเฉลี่ย และผลผลิตสูงสุด รวมถึงการเปลี่ยนแปลงราคาจากเดือนก่อนหน้าที่มีรายการ
 - ค่าเริ่มต้นเลือกปีปัจจุบันเพื่อให้กราฟเป็นลำดับเวลา; ตัวเลือก “ทุกปี” รวมเดือนชื่อเดียวกันจากทุกปีเพื่อดูฤดูกาล จึงไม่แสดงเป็นแนวโน้มตามเวลา
 - สถิตินับเฉพาะรายการขายที่บันทึกแล้ว ไม่รวมคำขอ OCR ที่ยังไม่ได้ยืนยันบันทึก
-- ต้องอนุมัติและเผยแพร่ GitHub Pages ก่อนผู้ใช้จะเห็น candidate นี้
+
+## Dashboard monthly export candidate — not yet published
+
+- Frontend source candidate: `2.7.1`; production remains `2.7.0`; backend remains `1.3.1`
+- เพิ่ม CSV UTF-8 พร้อม BOM ให้เปิดภาษาไทยใน spreadsheet ได้ และเพิ่มรายงานพิมพ์แนวนอนซึ่งผู้ใช้เลือก “บันทึกเป็น PDF” ใน dialog ของเบราว์เซอร์
+- ส่งออกตามปีที่เลือกหรือทุกปี พร้อมตาราง 12 เดือนและยอดรวม; เดือนที่ไม่มีข้อมูลเว้นช่องว่าง และระบุชัดว่า “ทุกปี” รวมเดือนชื่อเดียวกัน
+- ไม่เพิ่มการอ่าน/เขียนข้อมูลบน backend และไม่รวมชื่อผู้ซื้อหรือข้อมูลส่วนบุคคลในไฟล์สรุป
 
 ## UI polish
 
@@ -102,7 +108,7 @@ Backend backup helpers require one Apps Script update/deploy/setup before they b
 
 Only one user-device action remains before marking the project `Production Ready — Closed`:
 
-1. Open the deployed PWA (`2.6.6`) on the real mobile device.
+1. Open the deployed PWA (`2.7.0`) on the real mobile device.
 2. Scan a receipt containing seconds in TimeIn/TimeOut.
 3. Save the sale normally without manually rounding the times.
 4. Verify the new Sales row stores the same `HH:MM:SS` values shown on the receipt.
