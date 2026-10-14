@@ -7,7 +7,8 @@ const state = {
   accessToken: localStorage.getItem('palmAccessToken') || '', originalDataUrl: '', previewDataUrl: '', rotation: 0,
   source: 'MANUAL', receipt: null, ocrRunId: '', ocrRequestId: '', model: '', editingSaleId: '', expectedUpdatedAt: '', installPrompt: null,
   syncInProgress: false, viewingSaleId: '', viewingSaleDetail: null, contractors: [], pendingContractorRow: null,
-  editingContractorId: '', contractorsLoaded: false
+  editingContractorId: '', contractorsLoaded: false,
+  dashboardSeries: [], dashboardMetric: 'revenue', dashboardAllYears: false, dashboardYear: ''
 };
 
 const QUEUE_DB = 'palm-ledger-offline-v1';
@@ -436,6 +437,7 @@ function bindFilters() {
     loadHistory();
   });
   $('#dashboard-year').addEventListener('change', loadDashboard);
+  $('#dashboard-metric-tabs').addEventListener('click', handleDashboardMetricClick);
   updateFilterDrawerStatus();
 }
 
@@ -881,6 +883,9 @@ async function loadDashboard() {
     }
     updateDashboardYears(data.availableYears || [], data.year || selectedYear);
     const allYears = Boolean(data.allYears || data.year === 'all');
+    state.dashboardSeries = Array.isArray(data.monthlySeries) ? data.monthlySeries : [];
+    state.dashboardAllYears = allYears;
+    state.dashboardYear = String(data.year || selectedYear);
     $('#sum-weight-label').textContent = allYears ? 'ผลผลิตทั้งหมด' : `ผลผลิตปี ${Number(data.year) + 543}`;
     $('#sum-revenue-label').textContent = allYears ? 'คงเหลือหลังค่าแรงทั้งหมด' : `คงเหลือหลังค่าแรงปี ${Number(data.year) + 543}`;
     $('#sum-weight').textContent = formatNumber(data.totalWeightTon, 2); $('#sum-revenue').textContent = formatMoney(data.netAfterLabor);
@@ -888,20 +893,151 @@ async function loadDashboard() {
     $('#sum-labor-balance').textContent = `ค้างจ่าย ${formatMoney(data.laborBalanceDue)}`;
     $('#sum-gross-revenue').textContent = formatMoney(data.totalRevenue);
     $('#sum-price').textContent = formatNumber(data.averagePricePerKg, 2); $('#sum-count').textContent = formatNumber(data.saleCount, 0);
-    renderMonthlyChart(data.monthlySeries || []); renderBuyers(data.buyerComparison || []);
+    $('#monthly-period-label').textContent = allYears ? 'สรุปแยกตามเดือนจากทุกปี' : `รายเดือน ปี ${Number(data.year || selectedYear) + 543}`;
+    $('#dashboard-data-note').textContent = allYears
+      ? 'นับเฉพาะรายการขายที่บันทึกแล้ว • มุมมองทุกปีรวมเดือนชื่อเดียวกันเข้าด้วยกัน จึงใช้ดูฤดูกาล ไม่ใช่เส้นเวลาเรียงปีต่อปี'
+      : 'รายรับคือยอดสุทธิจากใบชั่งก่อนหักค่าแรง • ราคาเฉลี่ยถ่วงน้ำหนักตามกิโลกรัม • นับเฉพาะรายการขายที่บันทึกแล้ว';
+    renderDashboardAnalytics(); renderBuyers(data.buyerComparison || []);
   } catch (error) { handleError(error); } finally { setLoading(false); }
 }
 
-function renderMonthlyChart(series) {
-  const max = Math.max(1, ...series.map(item => Number(item.weightKg || 0)));
-  const months = ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
-  $('#monthly-chart').innerHTML = series.map((item, index) => `<div class="chart-column" title="${escapeHtml(formatNumber(item.weightKg, 0))} กก."><div class="chart-bar-wrap"><div class="chart-bar" style="height:${Math.max(2, Number(item.weightKg || 0) / max * 100)}%"></div></div><span>${months[index]}</span></div>`).join('');
+function renderDashboardAnalytics() {
+  renderMonthlyChart(state.dashboardSeries, state.dashboardMetric, state.dashboardAllYears);
+  renderMonthlyInsights(state.dashboardSeries, state.dashboardAllYears);
+  renderMonthlyBreakdown(state.dashboardSeries, state.dashboardAllYears);
+}
+
+function handleDashboardMetricClick(event) {
+  const button = event.target.closest('[data-dashboard-metric]');
+  if (!button) return;
+  const metric = button.dataset.dashboardMetric;
+  if (!['revenue', 'price', 'weight'].includes(metric)) return;
+  state.dashboardMetric = metric;
+  $$('#dashboard-metric-tabs [data-dashboard-metric]').forEach(item => {
+    item.setAttribute('aria-pressed', item === button ? 'true' : 'false');
+  });
+  renderMonthlyChart(state.dashboardSeries, state.dashboardMetric, state.dashboardAllYears);
+}
+
+function formatChartAxis(value, metric) {
+  const number = Number(value || 0);
+  if (metric === 'price') return formatNumber(number, 2);
+  return new Intl.NumberFormat('th-TH', { notation: 'compact', maximumFractionDigits: 1 }).format(number);
+}
+
+function renderMonthlyChart(series, metric, allYears) {
+  const analytics = window.PalmDashboardAnalytics;
+  const items = analytics.normalizeSeries(series);
+  const config = {
+    revenue: { title: 'ยอดรับจากใบชั่ง', unit: 'บาท' },
+    price: { title: 'ราคาเฉลี่ยต่อกิโลกรัม', unit: 'บาท/กก.' },
+    weight: { title: 'ผลผลิตที่ขายได้', unit: 'กิโลกรัม' }
+  }[metric] || { title: 'ยอดรับจากใบชั่ง', unit: 'บาท' };
+  const values = items.map(item => analytics.metricValue(item, metric));
+  const max = Math.max(0, ...values);
+  const scaleMax = max || 1;
+  const hasSales = items.some(item => item.saleCount > 0);
+  const hasMetricData = hasSales && max > 0;
+  const chart = $('#monthly-chart');
+  const axis = $('#monthly-chart-axis');
+  const months = $('#monthly-chart-months');
+  $('#monthly-chart-title').textContent = config.title;
+  $('#monthly-chart-unit').textContent = config.unit;
+  axis.innerHTML = [max, max / 2, 0].map(value => `<span>${escapeHtml(formatChartAxis(value, metric))}</span>`).join('');
+  months.innerHTML = items.map(item => `<span title="${escapeHtml(analytics.monthLabel(item.month))}">${escapeHtml(analytics.monthLabel(item.month))}</span>`).join('');
+  chart.setAttribute('aria-label', `${config.title} ${allYears ? 'รวมแยกตามเดือนจากทุกปี' : `ปี ${Number(state.dashboardYear) + 543}`}`);
+
+  const grid = '<span class="chart-gridline top"></span><span class="chart-gridline middle"></span><span class="chart-gridline bottom"></span>';
+  if (!hasMetricData) {
+    chart.innerHTML = `${grid}<div class="chart-empty-state">${hasSales ? 'มีรายการขาย แต่ช่วงนี้ไม่มีค่าของตัวชี้วัดนี้' : 'ยังไม่มีรายการขายในช่วงที่เลือก'}</div>`;
+    return;
+  }
+
+  if (metric === 'price') {
+    const width = 1200;
+    const height = 184;
+    const points = items.map((item, index) => {
+      const value = analytics.metricValue(item, metric);
+      if (item.saleCount <= 0 || value <= 0) return null;
+      return {
+        x: ((index + .5) / items.length) * width,
+        y: height - 8 - (value / scaleMax) * (height - 20),
+        label: `${analytics.monthLabel(item.month)}: ${formatNumber(value, 2)} บาท/กก. • ${formatNumber(item.saleCount)} ใบ`
+      };
+    });
+    const segments = [];
+    let segment = [];
+    points.forEach(point => {
+      if (point) segment.push(point);
+      else if (segment.length) { segments.push(segment); segment = []; }
+    });
+    if (segment.length) segments.push(segment);
+    const line = segments.map(group => {
+      const polyline = group.length > 1
+        ? `<polyline points="${group.map(point => `${point.x},${point.y}`).join(' ')}"></polyline>` : '';
+      const circles = group.map(point => `<circle cx="${point.x}" cy="${point.y}" r="7"><title>${escapeHtml(point.label)}</title></circle>`).join('');
+      return `${polyline}${circles}`;
+    }).join('');
+    chart.innerHTML = `${grid}<svg class="price-line-svg" viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" aria-hidden="true">${line}</svg>`;
+    return;
+  }
+
+  const bars = items.map(item => {
+    const value = analytics.metricValue(item, metric);
+    const barHeight = value > 0 ? Math.max(1.5, Math.min(100, value / scaleMax * 100)) : 0;
+    const valueLabel = metric === 'revenue' ? formatMoney(value) : `${formatNumber(value, 0)} กก.`;
+    const title = `${analytics.monthLabel(item.month)} • ${valueLabel} • ${formatNumber(item.saleCount)} ใบ`;
+    return `<div class="chart-bar-column"><div class="chart-bar" style="height:${barHeight}%" title="${escapeHtml(title)}"></div></div>`;
+  }).join('');
+  chart.innerHTML = `${grid}<div class="chart-bars" aria-hidden="true">${bars}</div>`;
+}
+
+function renderMonthlyInsights(series, allYears) {
+  const analytics = window.PalmDashboardAnalytics;
+  const cards = analytics.insightCards(series, allYears);
+  const container = $('#monthly-insights');
+  if (!cards.length) {
+    container.innerHTML = '<div class="analytics-empty">ยังไม่มีรายการขายที่บันทึกในช่วงนี้</div>';
+    return;
+  }
+  container.innerHTML = cards.map(card => {
+    if (card.key === 'price-change') {
+      const direction = card.value > 0 ? 'เพิ่มขึ้น' : card.value < 0 ? 'ลดลง' : 'ไม่เปลี่ยน';
+      const className = card.value > 0 ? 'change-up' : card.value < 0 ? 'change-down' : 'change-flat';
+      const percent = Number.isFinite(card.percent) ? ` • ${card.percent > 0 ? '+' : ''}${formatNumber(card.percent, 1)}%` : '';
+      return `<article class="insight-card ${className}"><span>${escapeHtml(card.label)}</span><strong>${direction} ${formatNumber(Math.abs(card.value), 2)}</strong><small>${escapeHtml(card.month)}${percent} บาท/กก.</small></article>`;
+    }
+    const value = card.key === 'revenue' ? formatMoney(card.value)
+      : card.key === 'price' ? `${formatNumber(card.value, 2)} บาท/กก.`
+        : `${formatNumber(card.value / 1000, 2)} ตัน`;
+    return `<article class="insight-card"><span>${escapeHtml(card.label)}</span><strong>${value}</strong><small>${escapeHtml(card.month)}</small></article>`;
+  }).join('');
+}
+
+function renderMonthlyBreakdown(series) {
+  const analytics = window.PalmDashboardAnalytics;
+  const items = analytics.normalizeSeries(series);
+  const totals = items.reduce((result, item) => {
+    result.weightKg += item.weightKg;
+    result.revenue += item.revenue;
+    result.weightedPrice += item.weightKg * item.averagePricePerKg;
+    result.saleCount += item.saleCount;
+    result.laborCost += item.laborCost;
+    result.netAfterLabor += item.netAfterLabor;
+    return result;
+  }, { weightKg: 0, revenue: 0, weightedPrice: 0, saleCount: 0, laborCost: 0, netAfterLabor: 0 });
+  $('#monthly-breakdown-body').innerHTML = items.map(item => {
+    const hasSales = item.saleCount > 0;
+    return `<tr><th scope="row">${analytics.monthLabel(item.month)}</th><td>${hasSales ? formatNumber(item.saleCount) : '—'}</td><td>${hasSales ? `${formatNumber(item.weightKg, 0)} กก.` : '—'}</td><td>${hasSales ? formatMoney(item.revenue) : '—'}</td><td>${hasSales ? `${formatNumber(item.averagePricePerKg, 2)} บาท` : '—'}</td><td>${hasSales ? formatMoney(item.laborCost) : '—'}</td><td>${hasSales ? formatMoney(item.netAfterLabor) : '—'}</td></tr>`;
+  }).join('');
+  const averagePrice = totals.weightKg ? totals.weightedPrice / totals.weightKg : 0;
+  $('#monthly-breakdown-total').innerHTML = `<tr><th scope="row">รวมช่วงที่เลือก</th><td>${formatNumber(totals.saleCount)}</td><td>${formatNumber(totals.weightKg, 0)} กก.</td><td>${formatMoney(totals.revenue)}</td><td>${formatNumber(averagePrice, 2)} บาท</td><td>${formatMoney(totals.laborCost)}</td><td>${formatMoney(totals.netAfterLabor)}</td></tr>`;
 }
 
 function renderBuyers(items) {
   const container = $('#buyer-comparison');
   container.classList.toggle('empty', !items.length);
-  container.innerHTML = items.length ? items.map(item => `<article class="buyer-row"><strong>${escapeHtml(item.buyerName)}</strong><span>${formatNumber(item.totalWeightKg, 0)} กก. • ${item.saleCount} ครั้ง • ค่าแรง ${formatMoney(item.totalLaborCost)}</span><b>${formatMoney(item.netAfterLabor ?? item.totalRevenue)}</b></article>`).join('') : 'ยังไม่มีข้อมูล';
+  container.innerHTML = items.length ? items.map(item => `<article class="buyer-row"><strong>${escapeHtml(item.buyerName)}</strong><span>${formatNumber(item.totalWeightKg, 0)} กก. • ${item.saleCount} ครั้ง • เฉลี่ย ${formatNumber(item.averagePricePerKg, 2)} บาท/กก. • ค่าแรง ${formatMoney(item.totalLaborCost)}</span><b>${formatMoney(item.netAfterLabor ?? item.totalRevenue)}</b></article>`).join('') : 'ยังไม่มีข้อมูล';
 }
 
 async function loadHistory() {
@@ -1305,7 +1441,7 @@ async function imagePayload(dataUrl){const [header,base64]=dataUrl.split(',');co
 function getIdempotencyKey(){let key=localStorage.getItem('palmIdempotencyKey');if(!key){key=crypto.randomUUID?crypto.randomUUID():`${Date.now()}-${Math.random()}`;localStorage.setItem('palmIdempotencyKey',key);}return key;}
 function saveDraft(){if(!$('#review-panel').classList.contains('hidden'))localStorage.setItem('palmDraft',JSON.stringify({receipt:collectReceipt(),laborEntries:collectLaborEntries(true,true),source:state.source,ocrRunId:state.ocrRunId,model:state.model,savedAt:Date.now()}));}
 function restoreDraft(){try{const draft=JSON.parse(localStorage.getItem('palmDraft'));if(draft?.receipt){state.source=draft.source||'MANUAL';state.ocrRunId=draft.ocrRunId||'';state.model=draft.model||'';openReview(draft.receipt,[],{warnings:[{message:'กู้คืนแบบร่างที่ยังไม่ได้บันทึก'}]},false,draft.laborEntries||[]);}}catch(error){localStorage.removeItem('palmDraft');}}
-function populateYears(){const current=new Date().getFullYear();$('#dashboard-year').innerHTML=`<option value="all">ทุกปี</option>${Array.from({length:6},(_,i)=>`<option value="${current-i}">${current-i+543}</option>`).join('')}`;$('#dashboard-year').value='all';}
+function populateYears(){const current=new Date().getFullYear();$('#dashboard-year').innerHTML=`<option value="all">ทุกปี</option>${Array.from({length:6},(_,i)=>`<option value="${current-i}">${current-i+543}</option>`).join('')}`;$('#dashboard-year').value=String(current);}
 function updateDashboardYears(years,selected){const current=new Date().getFullYear();const source=years.length?years:Array.from({length:6},(_,i)=>current-i);const values=Array.from(new Set(source.map(String))).sort().reverse();const select=$('#dashboard-year');select.innerHTML=`<option value="all">ทุกปี</option>${values.map(year=>`<option value="${escapeHtml(year)}">${Number(year)+543}</option>`).join('')}`;select.value=values.includes(String(selected))?String(selected):'all';}
 function setupInstall(){window.addEventListener('beforeinstallprompt',event=>{event.preventDefault();state.installPrompt=event;$('#install-button').classList.remove('hidden');});$('#install-button').addEventListener('click',async()=>{if(!state.installPrompt)return;state.installPrompt.prompt();await state.installPrompt.userChoice;state.installPrompt=null;$('#install-button').classList.add('hidden');});}
 function delay(ms){return new Promise(resolve=>setTimeout(resolve,ms));}

@@ -25,6 +25,8 @@ for (const scope of ['spreadsheets','drive','script.external_request']) {
 
 const html = fs.readFileSync('frontend/index.html', 'utf8');
 const app = fs.readFileSync('frontend/app.js', 'utf8');
+const dashboardAnalytics = fs.readFileSync('frontend/dashboard-analytics.js', 'utf8');
+new vm.Script(dashboardAnalytics, { filename: 'dashboard-analytics.js' });
 for (const reliabilityMarker of ['indexedDB.open', 'processPendingSaves', "api('sales.status'", 'idempotencyKey']) {
   if (!app.includes(reliabilityMarker)) throw new Error(`Missing reliable-save marker: ${reliabilityMarker}`);
 }
@@ -38,6 +40,13 @@ for (const visibilityMarker of ['history-count', 'clear-filters']) {
   if (!html.includes(visibilityMarker)) throw new Error(`Missing record-visibility marker: ${visibilityMarker}`);
 }
 if (!app.includes('<option value="all">ทุกปี</option>')) throw new Error('Missing all-years dashboard option');
+for (const dashboardMarker of ['dashboard-metric-tabs', 'monthly-insights', 'dashboard-data-note', 'monthly-chart-axis', 'monthly-chart-months', 'monthly-breakdown-body', 'monthly-breakdown-total']) {
+  if (!html.includes(dashboardMarker)) throw new Error(`Missing dashboard analytics element: ${dashboardMarker}`);
+}
+for (const dashboardMarker of ['renderDashboardAnalytics', 'renderMonthlyInsights', 'renderMonthlyBreakdown', 'price-change', 'dashboardMetric']) {
+  if (!app.includes(dashboardMarker)) throw new Error(`Missing dashboard analytics behavior: ${dashboardMarker}`);
+}
+if (!dashboardAnalytics.includes('window.PalmDashboardAnalytics')) throw new Error('Dashboard analytics helper is not exposed to the app');
 const ids = [...app.matchAll(/\$\(['"]#([a-zA-Z0-9_-]+)['"]\)/g)].map(match => match[1]);
 for (const id of new Set(ids)) {
   if (!html.includes(`id="${id}"`)) throw new Error(`Frontend references missing element: #${id}`);
@@ -52,7 +61,7 @@ const manifestWeb = JSON.parse(fs.readFileSync('frontend/manifest.webmanifest', 
 for (const icon of manifestWeb.icons) {
   if (!fs.existsSync(`frontend/${icon.src}`)) throw new Error(`Missing PWA icon: ${icon.src}`);
 }
-for (const file of ['frontend/styles-v2.css','frontend/sw.js','frontend/icons/icon.svg']) {
+for (const file of ['frontend/styles-v2.css','frontend/sw.js','frontend/dashboard-analytics.js','frontend/dashboard-analytics.css','frontend/icons/icon.svg']) {
   if (!fs.existsSync(file)) throw new Error(`Missing frontend asset: ${file}`);
 }
 

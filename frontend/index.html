@@ -139,8 +139,35 @@
         <article class="summary-card price"><span>ราคาเฉลี่ย</span><strong id="sum-price">0.00</strong><small>บาท/กก.</small></article>
         <article class="summary-card count"><span>จำนวนใบชั่ง</span><strong id="sum-count">0</strong><small>รายการ</small></article>
       </div>
-      <section class="panel data-panel"><div class="panel-heading"><div><span class="eyebrow">12 เดือน</span><h2>จังหวะผลผลิต</h2><p>น้ำหนักผลผลิตรวมในแต่ละเดือน</p></div></div><div id="monthly-chart" class="chart" aria-label="กราฟผลผลิตรายเดือน"></div></section>
-      <section class="panel data-panel"><div class="panel-heading"><div><span class="eyebrow">เปรียบเทียบ</span><h2>ลานรับซื้อ</h2><p>น้ำหนัก จำนวนครั้ง และรายได้</p></div></div><div id="buyer-comparison" class="stack-list empty">ยังไม่มีข้อมูล</div></section>
+      <section class="panel data-panel analytics-panel">
+        <div class="panel-heading"><div><span id="monthly-period-label" class="eyebrow">รายเดือน</span><h2>รายรับ ราคา และผลผลิต</h2><p>ดูฤดูกาลขายและราคาเฉลี่ยที่ได้รับในแต่ละเดือน</p></div></div>
+        <div id="monthly-insights" class="analytics-insights" aria-live="polite" aria-label="สรุปเดือนเด่น"></div>
+        <p id="dashboard-data-note" class="analytics-note">แสดงเฉพาะรายการขายที่บันทึกแล้ว • ราคาเฉลี่ยถ่วงน้ำหนักตามกิโลกรัม</p>
+        <div id="dashboard-metric-tabs" class="metric-tabs" role="group" aria-label="เลือกข้อมูลในกราฟรายเดือน">
+          <button type="button" data-dashboard-metric="revenue" aria-pressed="true">รายรับ</button>
+          <button type="button" data-dashboard-metric="price" aria-pressed="false">ราคา/กก.</button>
+          <button type="button" data-dashboard-metric="weight" aria-pressed="false">ผลผลิต</button>
+        </div>
+        <div class="chart-heading"><strong id="monthly-chart-title">รายรับสุทธิจากใบชั่ง</strong><small id="monthly-chart-unit">บาท</small></div>
+        <div class="chart-frame">
+          <div id="monthly-chart-axis" class="chart-y-axis" aria-hidden="true"></div>
+          <div class="chart-main">
+            <div id="monthly-chart" class="chart-plot" role="img" aria-label="กราฟรายรับรายเดือน"></div>
+            <div id="monthly-chart-months" class="chart-month-labels" aria-hidden="true"></div>
+          </div>
+        </div>
+        <details class="monthly-table-details">
+          <summary>ดูตัวเลขรายเดือนทั้งหมด</summary>
+          <div class="monthly-table-scroll">
+            <table class="monthly-breakdown-table">
+              <thead><tr><th scope="col">เดือน</th><th scope="col">ใบชั่ง</th><th scope="col">ผลผลิต</th><th scope="col">ยอดรับจากใบชั่ง</th><th scope="col">เฉลี่ย/กก.</th><th scope="col">ค่าแรง</th><th scope="col">หลังหักค่าแรง</th></tr></thead>
+              <tbody id="monthly-breakdown-body"></tbody>
+              <tfoot id="monthly-breakdown-total"></tfoot>
+            </table>
+          </div>
+        </details>
+      </section>
+      <section class="panel data-panel"><div class="panel-heading"><div><span class="eyebrow">เปรียบเทียบ</span><h2>ลานรับซื้อ</h2><p>ปริมาณ ราคาเฉลี่ย ค่าแรง และยอดสุทธิ</p></div></div><div id="buyer-comparison" class="stack-list empty">ยังไม่มีข้อมูล</div></section>
     </section>
 
     <section id="view-history" class="view" aria-labelledby="history-title">
@@ -251,6 +278,6 @@
     <strong id="loading-text">กำลังทำงาน…</strong>
   </div>
   <div id="toast" class="toast hidden" role="status"></div>
-  <script src="assets/lottie-light.min.js"></script><script src="config.js"></script><script src="app.js" defer></script>
+  <script src="assets/lottie-light.min.js"></script><script src="config.js"></script><script src="dashboard-analytics.js" defer></script><script src="app.js" defer></script>
 </body>
 </html>

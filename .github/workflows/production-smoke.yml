@@ -21,16 +21,23 @@ jobs:
           curl --fail --silent --show-error --retry 5 --retry-delay 3 https://aodxx.github.io/Pem/index.html -o /tmp/index.html
           curl --fail --silent --show-error --retry 5 --retry-delay 3 https://aodxx.github.io/Pem/contrast-fix.css -o /tmp/contrast-fix.css
           curl --fail --silent --show-error --retry 5 --retry-delay 3 https://aodxx.github.io/Pem/developer-credit.css -o /tmp/developer-credit.css
+          curl --fail --silent --show-error --retry 5 --retry-delay 3 https://aodxx.github.io/Pem/dashboard-analytics.css -o /tmp/dashboard-analytics.css
+          curl --fail --silent --show-error --retry 5 --retry-delay 3 https://aodxx.github.io/Pem/dashboard-analytics.js -o /tmp/dashboard-analytics.js
           curl --fail --silent --show-error --retry 5 --retry-delay 3 https://aodxx.github.io/Pem/sw.js -o /tmp/sw.js
-          grep -F "version: '2.6.6'" /tmp/config.js
-          grep -F "const CACHE = 'palm-ledger-v2.6.6';" /tmp/sw.js
+          grep -F "version: '2.7.0'" /tmp/config.js
+          grep -F "const CACHE = 'palm-ledger-v2.7.0';" /tmp/sw.js
+          grep -F 'dashboard-analytics.css' /tmp/sw.js
+          grep -F 'dashboard-analytics.js' /tmp/sw.js
+          grep -F 'dashboard-analytics.js' /tmp/index.html
+          grep -F 'window.PalmDashboardAnalytics' /tmp/dashboard-analytics.js
+          grep -F 'data-dashboard-metric="price"' /tmp/index.html
           grep -F 'Developed by <b>aod</b>' /tmp/config.js
           grep -F 'https://www.facebook.com/share/1AWvhjdr44/' /tmp/config.js
           grep -F 'name="timeIn" type="time" step="1"' /tmp/index.html
           grep -F 'name="timeOut" type="time" step="1"' /tmp/index.html
           grep -F 'PALM LEDGER 2.6.3' /tmp/contrast-fix.css
           grep -F 'color: #496158 !important;' /tmp/contrast-fix.css
-          grep -F 'PALM LEDGER 2.6.6' /tmp/developer-credit.css
+          grep -F 'PALM LEDGER 2.7.0' /tmp/developer-credit.css
       - name: Check production backend health
         run: |
           set -euo pipefail

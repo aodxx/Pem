@@ -3,9 +3,11 @@
 เว็บแอปมือถือสำหรับอ่านใบชั่งขายปาล์มด้วย Gemini ตรวจข้อมูลก่อนบันทึก และจัดเก็บประวัติการขาย ค่าแรง รูปใบชั่ง และรายงานไว้ใน Google Sheets/Drive
 
 - แอปที่ใช้งานจริง: <https://aodxx.github.io/Pem/>
-- Frontend/PWA: `2.6.6`
+- Frontend/PWA source: `2.7.0` (dashboard analytics candidate; ยังไม่เผยแพร่)
+- Frontend/PWA ที่ใช้งานจริง: `2.6.6`
 - Apps Script Backend: `1.3.1`
 - API: `v1`
+- Dashboard analytics definitions and roadmap: [`docs/DASHBOARD_ANALYTICS.md`](docs/DASHBOARD_ANALYTICS.md)
 
 ## เริ่มพัฒนาใน 3 คำสั่ง
 
@@ -49,6 +51,7 @@ schemas/                  JSON Schema สำหรับ Gemini OCR
 - `modern-polish.css` — modern visual polish
 - `contrast-fix.css` — contrast-first overrides สำหรับมือถือจริง
 - `developer-credit.css` — developer signature และ Facebook action
+- `dashboard-analytics.css` / `dashboard-analytics.js` — กราฟรายเดือนและ insights จากข้อมูลที่บันทึกจริง
 
 ## ทดสอบ
 

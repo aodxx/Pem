@@ -10,7 +10,7 @@
     apiUrl: savedApiUrl || DEFAULT_API_URL,
     defaultApiUrl: DEFAULT_API_URL,
     multiOwner: true,
-    version: '2.6.6'
+    version: '2.7.0'
   });
 
   // Multi-owner pairing layer. app.js remains owner-agnostic and reads the
